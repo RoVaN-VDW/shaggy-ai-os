@@ -8,6 +8,19 @@ function getAdminClient() {
   return createClient(url, key);
 }
 
+async function extractTextPreview(file: File, bytes: ArrayBuffer, maxChars: number): Promise<string> {
+  const ext = file.name.split(".").pop()?.toLowerCase();
+  if (ext === "txt" || ext === "md" || ext === "markdown") {
+    const text = new TextDecoder().decode(bytes).slice(0, maxChars);
+    return text;
+  }
+  if (ext === "pdf") {
+    // PDF text extraction is a future improvement; return truncated bytes for now
+    return `[PDF: ${file.name}] — text extraction pending`;
+  }
+  return `[${file.type || ext}] ${file.name}`;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
@@ -45,6 +58,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: uploadError.message }, { status: 500 });
     }
 
+    const contentPreview = await extractTextPreview(file, bytes, 3000);
+
     const { error: dbError } = await supabaseAdmin.from("knowledge_docs").insert({
       name: file.name,
       file_type: file.type || ext || "unknown",
@@ -52,6 +67,8 @@ export async function POST(req: NextRequest) {
       storage_path: path,
       embedding_status: "pending",
       project_id: projectId || null,
+      content_preview: contentPreview,
+      content_text: contentPreview,
     });
 
     if (dbError) {

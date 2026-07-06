@@ -170,11 +170,12 @@ FROM (
 WHERE NOT EXISTS (SELECT 1 FROM public.usage_events);
 
 INSERT INTO public.notifications (level, title, message, read)
-VALUES
+SELECT * FROM (VALUES
   ('warning', 'Kimi budget at 75%', 'Daily Kimi spend reached $7.50 of $10.00 limit.', false),
   ('error', 'OpenAI call failed', 'Timeout on project SHAGGY v0.2 prompt at 09:42.', false),
   ('info', 'Knowledge base indexed', 'Uploaded document "PRD-v0.2.pdf" is now searchable.', false),
   ('success', 'Review queue cleared', 'All pending approvals were resolved.', false)
+) AS t(level, title, message, read)
 WHERE NOT EXISTS (SELECT 1 FROM public.notifications);
 
 INSERT INTO public.knowledge_docs (project_id, name, file_type, size_bytes, storage_path, embedding_status)
@@ -188,8 +189,9 @@ SELECT
 WHERE NOT EXISTS (SELECT 1 FROM public.knowledge_docs);
 
 INSERT INTO public.agent_activity (agent, action, status, metadata)
-VALUES
-  ('coder', 'Generated usage panel', 'success', '{"provider": "kimi"}'),
-  ('reviewer', 'Reviewed alert system', 'success', '{"items": 3}'),
-  ('deployer', 'Deployed to Vercel', 'success', '{"target": "production"}')
+SELECT * FROM (VALUES
+  ('coder', 'Generated usage panel', 'success', '{"provider": "kimi"}'::jsonb),
+  ('reviewer', 'Reviewed alert system', 'success', '{"items": 3}'::jsonb),
+  ('deployer', 'Deployed to Vercel', 'success', '{"target": "production"}'::jsonb)
+) AS t(agent, action, status, metadata)
 WHERE NOT EXISTS (SELECT 1 FROM public.agent_activity);

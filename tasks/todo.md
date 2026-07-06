@@ -52,3 +52,13 @@ Risk is low because the app currently shows the starter page only. Rollback is t
 - The original `supabase/schema.sql` contains destructive `drop table ... cascade` lines. Remote execution first checked `public` tables and found none, then applied the non-destructive create/RLS portion only.
 - Seed data inserted with a schema-compatible seed in `supabase/seed.sql` and `docs/seed.sql`.
 - Verified remote state: 20 public tables, RLS enabled on all 20 tables, 3 projects, 5 model providers, 4 knowledge rooms, and 3 review items.
+
+2026-07-07 01:47 CEST:
+
+- Supabase storage bucket `knowledge` exists and is private.
+- Storage policy `Allow service role all operations` exists for `storage.objects` with role `service_role`.
+- Vercel production env vars confirmed: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_SUPABASE_PROJECT_REF`, and `SUPABASE_SERVICE_ROLE_KEY`.
+- Provider key names exist in `.env.local` but their values are empty, so `OPENAI_API_KEY`, `KIMI_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, and `ANTIGRAVITY_API_KEY` were not added to Vercel.
+- Local production build passed.
+- Vercel production deploy succeeded: `dpl_5kxDbTVM5UjPep4rMjMhVP8Hvyak`.
+- Live production alias verified with HTTP 200: `https://shaggy-ai-os.vercel.app`.
