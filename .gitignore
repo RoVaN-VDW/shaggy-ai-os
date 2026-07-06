@@ -14,8 +14,8 @@
 /coverage
 
 # next.js
-/.next/
-/out/
+/.next
+/out
 
 # production
 /build
@@ -41,7 +41,10 @@ yarn-error.log*
 next-env.d.ts
 
 # build output
-dist/
+/dist
 
 # local mockups
 _mockups/
+
+# supabase local temp
+supabase/.temp
