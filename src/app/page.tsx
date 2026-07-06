@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -14,22 +13,7 @@ import { QuickActionsDialog } from "@/components/actions/quick-actions-dialog";
 import { KnowledgeUpload } from "@/components/knowledge/knowledge-upload";
 import { NotificationsPanel } from "@/components/notifications/notifications-panel";
 import { UsagePanel } from "@/components/usage/usage-panel";
-import {
-  Activity,
-  Folder,
-  ShieldCheck,
-  Zap,
-  Bell,
-  ArrowRight,
-  Loader2,
-  AlertCircle,
-  Rocket,
-  Cpu,
-  Database,
-  FileText,
-  Bot,
-  Clock,
-} from "lucide-react";
+import { Activity, Folder, ShieldCheck, Zap, Bell, ArrowRight, Loader2, AlertCircle, Rocket, Cpu, Database, Bot, Clock } from "lucide-react";
 
 function SystemHealth({ providers }: { providers: { status: string }[] }) {
   const active = providers.filter((p) => p.status === "active").length;
@@ -54,7 +38,6 @@ export default function CockpitPage() {
     updateReviewStatus,
     markNotificationRead,
     clearAllNotifications,
-    addNotification,
   } = useCockpitData();
   const { score: systemHealth, active: activeProviders } = SystemHealth({ providers });
 

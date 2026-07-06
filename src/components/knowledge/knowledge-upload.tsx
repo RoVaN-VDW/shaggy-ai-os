@@ -150,7 +150,7 @@ export function KnowledgeUpload({ docs }: { docs: { id: string; name: string; fi
             <div className="text-[10px] text-[#64748b] space-y-1">
               <p>• Documents are stored in Supabase Storage</p>
               <p>• Embeddings are queued for RAG</p>
-              <p>• Status updates to "indexed" when ready</p>
+              <p>• Status updates to &quot;indexed&quot; when ready</p>
             </div>
           </div>
         </Card>
