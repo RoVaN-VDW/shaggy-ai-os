@@ -41,7 +41,7 @@ export default function CockpitPage() {
           <AICoreOrb size={96} />
         </div>
         <div className="flex flex-col gap-1 flex-1 min-w-0">
-          <h1 className="text-2xl font-bold text-[#f1f5f9]">Welcome back, Alfred.</h1>
+          <h1 className="text-2xl font-bold text-[#f1f5f9]">Welcome back, Ronald.</h1>
           <p className="text-sm text-[#94a3b8]">
             S.H.A.G.G.Y. is in Manual Mode. All external actions are approval-gated. {projects.length} project{projects.length !== 1 && "s"} active, {activeProviders} of {providers.length} model providers active.
           </p>
