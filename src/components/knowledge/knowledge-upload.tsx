@@ -16,7 +16,7 @@ const STATUS_STYLES: Record<string, string> = {
   error: "bg-[#ef4444]/10 text-[#ef4444] border-[#ef4444]/30",
 };
 
-export function KnowledgeUpload({ docs }: { docs: { id: string; name: string; file_type: string; size_bytes: number; embedding_status: string; created_at: string }[] }) {
+export function KnowledgeUpload({ docs }: { docs: { id: string; name: string; file_type: string; size_bytes: number; embedding_status: string; created_at: string; storage_path?: string }[] }) {
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -26,34 +26,29 @@ export function KnowledgeUpload({ docs }: { docs: { id: string; name: string; fi
     if (!file) return;
 
     setUploading(true);
-    setProgress(25);
+    setProgress(10);
 
-    const path = `docs/${Date.now()}_${file.name}`;
-    const { error: uploadError } = await supabase.storage.from("knowledge").upload(path, file);
-    setProgress(70);
+    const formData = new FormData();
+    formData.append("file", file);
 
-    if (uploadError) {
+    try {
+      setProgress(40);
+      const res = await fetch("/api/upload", { method: "POST", body: formData });
+      setProgress(80);
+      const data = await res.json();
+      setProgress(100);
+
+      if (!res.ok) {
+        alert(`Upload failed: ${data.error || "Unknown error"}`);
+      } else {
+        window.location.reload();
+      }
+    } catch (err) {
+      alert(`Upload failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+    } finally {
       setUploading(false);
       setProgress(0);
-      alert(`Upload failed: ${uploadError.message}`);
-      return;
-    }
-
-    const { error: dbError } = await supabase.from("knowledge_docs").insert({
-      name: file.name,
-      file_type: file.type || file.name.split(".").pop() || "unknown",
-      size_bytes: file.size,
-      storage_path: path,
-      embedding_status: "pending",
-    });
-
-    setProgress(100);
-    setUploading(false);
-
-    if (dbError) {
-      alert(`Database error: ${dbError.message}`);
-    } else {
-      window.location.reload();
+      if (inputRef.current) inputRef.current.value = "";
     }
   };
 
@@ -155,7 +150,7 @@ export function KnowledgeUpload({ docs }: { docs: { id: string; name: string; fi
             <div className="text-[10px] text-[#64748b] space-y-1">
               <p>• Documents are stored in Supabase Storage</p>
               <p>• Embeddings are queued for RAG</p>
-              <p>• Status updates to &quot;indexed&quot; when ready</p>
+              <p>• Status updates to "indexed" when ready</p>
             </div>
           </div>
         </Card>

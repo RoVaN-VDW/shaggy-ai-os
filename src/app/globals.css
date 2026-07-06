@@ -76,6 +76,40 @@
   --sidebar-ring: #00d4ff;
 }
 
+[data-theme="light"], .light {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --popover: #ffffff;
+  --popover-foreground: #0f172a;
+  --primary: #0284c7;
+  --primary-foreground: #ffffff;
+  --secondary: #e2e8f0;
+  --secondary-foreground: #1e293b;
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
+  --accent: #e2e8f0;
+  --accent-foreground: #0f172a;
+  --destructive: #ef4444;
+  --border: #cbd5e1;
+  --input: #cbd5e1;
+  --ring: #0284c7;
+  --chart-1: #0284c7;
+  --chart-2: #f59e0b;
+  --chart-3: #2563eb;
+  --chart-4: #22c55e;
+  --chart-5: #9333ea;
+  --sidebar: #f1f5f9;
+  --sidebar-foreground: #0f172a;
+  --sidebar-primary: #0284c7;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e2e8f0;
+  --sidebar-accent-foreground: #0f172a;
+  --sidebar-border: #cbd5e1;
+  --sidebar-ring: #0284c7;
+}
+
 @layer base {
   * {
     @apply border-border;
@@ -97,6 +131,11 @@ html, body, #__next {
   background: radial-gradient(ellipse at top left, #0d1519 0%, #03080b 60%);
 }
 
+[data-theme="light"] .shaggy-screen,
+.light .shaggy-screen {
+  background: radial-gradient(ellipse at top left, #f1f5f9 0%, #e2e8f0 60%);
+}
+
 .glow-cyan {
   box-shadow: 0 0 14px rgba(0, 212, 255, 0.22);
 }
@@ -109,4 +148,10 @@ html, body, #__next {
   background: rgba(17, 28, 33, 0.72);
   backdrop-filter: blur(12px);
   border: 1px solid rgba(30, 41, 59, 0.8);
+}
+
+[data-theme="light"] .panel-glass,
+.light .panel-glass {
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(203, 213, 225, 0.8);
 }
