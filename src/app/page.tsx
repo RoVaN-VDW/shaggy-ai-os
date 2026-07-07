@@ -13,13 +13,27 @@ import { QuickActionsDialog } from "@/components/actions/quick-actions-dialog";
 import { KnowledgeUpload } from "@/components/knowledge/knowledge-upload";
 import { NotificationsPanel } from "@/components/notifications/notifications-panel";
 import { UsagePanel } from "@/components/usage/usage-panel";
-import { Activity, Folder, ShieldCheck, Zap, Bell, ArrowRight, Loader2, AlertCircle, Rocket, Cpu, Database, Bot, Clock } from "lucide-react";
+import { Activity, Folder, ShieldCheck, Zap, Bell, ArrowRight, Loader2, AlertCircle, Rocket, Cpu, Database, Bot, Clock, HeartPulse, RefreshCw } from "lucide-react";
+import { useState } from "react";
 
-function SystemHealth({ providers }: { providers: { status: string }[] }) {
-  const active = providers.filter((p) => p.status === "active").length;
+function SystemHealth({ providers }: { providers: { status: string; health_status?: string }[] }) {
+  const healthy = providers.filter((p) => p.status === "active" && p.health_status === "healthy").length;
   const total = Math.max(providers.length, 1);
-  const score = Math.round((active / total) * 100);
-  return { score, active };
+  const score = Math.round((healthy / total) * 100);
+  return { score, healthy };
+}
+
+function formatLastSeen(value: string | null | undefined) {
+  if (!value) return "never";
+  const date = new Date(value);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.round(diffMs / 60000);
+  if (diffMins < 1) return "just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  const diffHours = Math.round(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  return date.toLocaleDateString();
 }
 
 export default function CockpitPage() {
@@ -34,12 +48,34 @@ export default function CockpitPage() {
     dailyUsage,
     knowledgeDocs,
     agentActivity,
+    refresh,
     updateProviderStatus,
     updateReviewStatus,
     markNotificationRead,
     clearAllNotifications,
   } = useCockpitData();
-  const { score: systemHealth, active: activeProviders } = SystemHealth({ providers });
+  const { score: systemHealth, healthy: healthyProviders } = SystemHealth({ providers });
+  const [checkingHealth, setCheckingHealth] = useState(false);
+  const [healthMessage, setHealthMessage] = useState<string | null>(null);
+
+  const handleCheckHealth = async () => {
+    setCheckingHealth(true);
+    setHealthMessage(null);
+    try {
+      const res = await fetch("/api/health");
+      const data = await res.json();
+      if (res.ok) {
+        setHealthMessage(`Health check complete: ${data.providers?.length ?? 0} provider(s) checked.`);
+        refresh();
+      } else {
+        setHealthMessage(data.error || "Health check failed.");
+      }
+    } catch (err) {
+      setHealthMessage(err instanceof Error ? err.message : "Health check failed.");
+    } finally {
+      setCheckingHealth(false);
+    }
+  };
 
   const unreadCount = notifications.filter((n) => !n.read).length;
   const totalCost = usage.reduce((sum, u) => sum + (u.cost_estimate || 0), 0);
@@ -56,13 +92,13 @@ export default function CockpitPage() {
         <div className="flex flex-col gap-1 flex-1 min-w-0">
           <h1 className="text-2xl font-bold text-[#f1f5f9]">Welcome back, Ronald.</h1>
           <p className="text-sm text-[#94a3b8]">
-            S.H.A.G.G.Y. is in Manual Mode. All external actions are approval-gated. {projects.length} project{projects.length !== 1 && "s"} active, {activeProviders} of {providers.length} model providers active.
+            S.H.A.G.G.Y. is in Manual Mode. All external actions are approval-gated. {projects.length} project{projects.length !== 1 && "s"} active, {healthyProviders} of {providers.length} model providers healthy.
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <Badge className="bg-[#00d4ff]/10 text-[#00d4ff] border border-[#00d4ff]/30">Manual</Badge>
           <Badge className="bg-[#f0b429]/10 text-[#f0b429] border border-[#f0b429]/30">Local-first</Badge>
-          <Badge className="bg-[#22c55e]/10 text-[#22c55e] border border-[#22c55e]/30">{activeProviders}/{providers.length} Providers</Badge>
+          <Badge className="bg-[#22c55e]/10 text-[#22c55e] border border-[#22c55e]/30">{healthyProviders}/{providers.length} Providers</Badge>
         </div>
       </div>
 
@@ -82,8 +118,8 @@ export default function CockpitPage() {
 
       {/* KPI Row */}
       <div className="col-span-12 grid grid-cols-4 gap-4">
-        <KpiCard icon={<Cpu className="w-4 h-4 text-[#00d4ff]" />} label="System Health" value={`${systemHealth}%`} sub="All providers operational" />
-        <KpiCard icon={<Zap className="w-4 h-4 text-[#f0b429]" />} label="Active Providers" value={`${activeProviders}/${providers.length}`} sub="Models online now" />
+        <KpiCard icon={<Cpu className="w-4 h-4 text-[#00d4ff]" />} label="System Health" value={`${systemHealth}%`} sub={`${healthyProviders} healthy / ${providers.length} providers`} />
+        <KpiCard icon={<Zap className="w-4 h-4 text-[#f0b429]" />} label="Healthy Providers" value={`${healthyProviders}/${providers.length}`} sub="Models online now" />
         <KpiCard icon={<Database className="w-4 h-4 text-[#22c55e]" />} label="Usage Spend (30d)" value={`$${totalCost.toFixed(2)}`} sub={`${failedEvents} failed events`} />
         <KpiCard icon={<Bell className="w-4 h-4 text-[#ef4444]" />} label="Unread Alerts" value={unreadCount.toString()} sub="Needs attention" />
       </div>
@@ -104,18 +140,34 @@ export default function CockpitPage() {
               {/* Left Column */}
               <div className="col-span-8 grid grid-cols-2 gap-4 content-start">
                 <Card className="border-[#1e293b] bg-[#111c21]/80 backdrop-blur">
-                  <CardHeader className="pb-2">
+                  <CardHeader className="pb-2 flex-row items-center justify-between">
                     <CardTitle className="text-sm text-[#94a3b8] flex items-center gap-2">
                       <Activity className="w-4 h-4 text-[#00d4ff]" /> System Health
                     </CardTitle>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-[10px] border-[#1e293b] text-[#94a3b8] hover:text-[#00d4ff] hover:bg-[#00d4ff]/10"
+                      onClick={handleCheckHealth}
+                      disabled={checkingHealth}
+                    >
+                      {checkingHealth ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <HeartPulse className="w-3 h-3 mr-1" />}
+                      Check Health
+                    </Button>
                   </CardHeader>
                   <CardContent>
                     <div className="text-3xl font-bold text-[#f1f5f9]">{systemHealth}%</div>
                     <Progress value={systemHealth} className="mt-3 h-1.5" />
                     <div className="mt-4 grid grid-cols-2 gap-2 text-xs text-[#94a3b8]">
                       <div>Supabase: <span className="text-[#22c55e]">Connected</span></div>
-                      <div>Active Models: <span className="text-[#22c55e]">{activeProviders}</span></div>
+                      <div>Healthy Models: <span className="text-[#22c55e]">{healthyProviders}</span></div>
                     </div>
+                    {healthMessage && (
+                      <div className="mt-3 text-[10px] text-[#94a3b8] flex items-center gap-1">
+                        <RefreshCw className="w-3 h-3 text-[#00d4ff]" />
+                        {healthMessage}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
 
@@ -133,12 +185,16 @@ export default function CockpitPage() {
                       )}
                       {providers.map((p) => (
                         <div key={p.id} className="flex items-center justify-between p-2 rounded-lg bg-[#03080b] border border-[#1e293b]">
-                          <div className="flex items-center gap-2">
-                            <Badge variant="outline" className={`border-[#1e293b] text-[10px] ${p.status === "active" ? "text-[#22c55e]" : "text-[#94a3b8]"}`}>
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <Badge variant="outline" className={`border-[#1e293b] text-[10px] shrink-0 ${p.status === "active" ? "text-[#22c55e]" : "text-[#94a3b8]"}`}>
                               {p.provider}
                             </Badge>
-                            <span className="text-[10px] text-[#64748b]">{p.model}</span>
+                            <span className="text-[10px] text-[#64748b] truncate">{p.model}</span>
+                            <Badge variant="outline" className={`border-[#1e293b] text-[10px] shrink-0 ${p.health_status === "healthy" ? "text-[#22c55e]" : p.health_status?.startsWith("error") ? "text-[#f0b429]" : p.health_status === "unhealthy" ? "text-[#ef4444]" : "text-[#94a3b8]"}`}>
+                              {p.health_status || "unknown"}
+                            </Badge>
                           </div>
+                          <div className="text-[10px] text-[#64748b] shrink-0 px-2">{formatLastSeen(p.last_seen_at)}</div>
                           <ProviderConfigDialog provider={p} onStatusChange={updateProviderStatus} />
                         </div>
                       ))}

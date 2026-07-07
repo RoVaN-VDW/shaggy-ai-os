@@ -17,6 +17,8 @@ export type ModelProvider = {
   provider: string;
   model: string;
   status: string;
+  health_status: string;
+  last_seen_at: string | null;
   cost_profile?: Record<string, unknown>;
   policy_profile?: Record<string, unknown>;
 };
@@ -66,6 +68,7 @@ export type KnowledgeDoc = {
   file_type: string;
   size_bytes: number;
   embedding_status: string;
+  storage_path?: string;
   created_at: string;
 };
 
@@ -136,7 +139,7 @@ export function useCockpitData(): CockpitState {
           .order("updated_at", { ascending: false }),
         supabase
           .from("model_providers")
-          .select("id, provider, model, status, cost_profile, policy_profile")
+          .select("id, provider, model, status, cost_profile, policy_profile, last_seen_at, health_status")
           .order("created_at", { ascending: false }),
         supabase
           .from("review_items")
@@ -156,7 +159,7 @@ export function useCockpitData(): CockpitState {
           .limit(20),
         supabase
           .from("knowledge_docs")
-          .select("id, project_id, name, file_type, size_bytes, embedding_status, created_at")
+          .select("id, project_id, name, file_type, size_bytes, embedding_status, storage_path, created_at")
           .order("created_at", { ascending: false })
           .limit(10),
         supabase

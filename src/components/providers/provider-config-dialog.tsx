@@ -22,22 +22,71 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { ModelProvider } from "@/hooks/useCockpitData";
-import { Settings2 } from "lucide-react";
+import { Settings2, HeartPulse, Loader2, Clock } from "lucide-react";
 
 type Props = {
   provider: ModelProvider;
   onStatusChange: (id: string, status: string) => void;
 };
 
+function formatLastSeen(value: string | null | undefined) {
+  if (!value) return "never";
+  const date = new Date(value);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.round(diffMs / 60000);
+  if (diffMins < 1) return "just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  const diffHours = Math.round(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  return date.toLocaleDateString();
+}
+
+function healthColorClass(health: string | undefined) {
+  if (health === "healthy") return "border-[#22c55e]/30 text-[#22c55e]";
+  if (health === "unhealthy") return "border-[#ef4444]/30 text-[#ef4444]";
+  if (health && (health.startsWith("error") || health === "missing_key")) return "border-[#f0b429]/30 text-[#f0b429]";
+  return "border-[#94a3b8]/30 text-[#94a3b8]";
+}
+
 export function ProviderConfigDialog({ provider, onStatusChange }: Props) {
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState(provider.status);
   const [budget, setBudget] = useState(100);
   const [alerts, setAlerts] = useState(true);
+  const [checking, setChecking] = useState(false);
+  const [healthMessage, setHealthMessage] = useState<string | null>(null);
+  const [lastSeen, setLastSeen] = useState(provider.last_seen_at);
+  const [healthStatus, setHealthStatus] = useState(provider.health_status);
 
   const handleSave = () => {
     onStatusChange(provider.id, status);
     setOpen(false);
+  };
+
+  const handleCheckHealth = async () => {
+    setChecking(true);
+    setHealthMessage(null);
+    try {
+      const res = await fetch("/api/health");
+      const data = await res.json();
+      if (res.ok && data.providers) {
+        const match = data.providers.find((p: { id: string; health: string; last_seen_at?: string }) => p.id === provider.id);
+        if (match) {
+          setHealthStatus(match.health);
+          setLastSeen(match.last_seen_at ?? new Date().toISOString());
+          setHealthMessage(`Health: ${match.health}`);
+        } else {
+          setHealthMessage("Provider not checked.");
+        }
+      } else {
+        setHealthMessage(data.error || "Health check failed.");
+      }
+    } catch (err) {
+      setHealthMessage(err instanceof Error ? err.message : "Health check failed.");
+    } finally {
+      setChecking(false);
+    }
   };
 
   return (
@@ -62,6 +111,9 @@ export function ProviderConfigDialog({ provider, onStatusChange }: Props) {
               }
             >
               {status}
+            </Badge>
+            <Badge variant="outline" className={healthColorClass(healthStatus)}>
+              {healthStatus || "unknown"}
             </Badge>
           </DialogTitle>
         </DialogHeader>
@@ -88,6 +140,33 @@ export function ProviderConfigDialog({ provider, onStatusChange }: Props) {
                 <SelectItem value="disabled" className="text-[#f1f5f9]">Disabled</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="space-y-2 rounded-lg bg-[#03080b] border border-[#1e293b] p-3">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <div className="text-xs text-[#94a3b8]">Health Status</div>
+                <div className="text-sm font-medium text-[#f1f5f9]">{healthStatus || "unknown"}</div>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleCheckHealth}
+                disabled={checking}
+                className="h-8 text-[10px] border-[#1e293b] text-[#94a3b8] hover:text-[#00d4ff] hover:bg-[#00d4ff]/10"
+              >
+                {checking ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <HeartPulse className="w-3 h-3 mr-1" />}
+                Check Health
+              </Button>
+            </div>
+            {lastSeen && (
+              <div className="text-[10px] text-[#64748b] flex items-center gap-1">
+                <Clock className="w-3 h-3" /> Last seen {formatLastSeen(lastSeen)}
+              </div>
+            )}
+            {healthMessage && (
+              <div className="text-[10px] text-[#94a3b8]">{healthMessage}</div>
+            )}
           </div>
 
           <div className="space-y-2">
