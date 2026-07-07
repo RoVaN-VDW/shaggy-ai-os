@@ -1,12 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-
-function getAdminClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error("Missing Supabase service role configuration");
-  return createClient(url, key);
-}
+import { getSupabaseAdmin, requireAuth } from "@/lib/supabase/server";
 
 const HEALTH_ENDPOINTS: Record<string, (model: string, key: string) => Promise<Response>> = {
   openai: async (_model, key) =>
@@ -35,9 +28,12 @@ const HEALTH_ENDPOINTS: Record<string, (model: string, key: string) => Promise<R
     }),
 };
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const auth = await requireAuth(req);
+  if (auth.error) return auth.error;
+
   try {
-    const supabaseAdmin = getAdminClient();
+    const supabaseAdmin = getSupabaseAdmin();
     const { data: providers, error } = await supabaseAdmin
       .from("model_providers")
       .select("id, provider, model, status");

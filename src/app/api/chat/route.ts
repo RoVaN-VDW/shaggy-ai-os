@@ -1,12 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-
-function getAdminClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error("Missing Supabase service role configuration");
-  return createClient(url, key);
-}
+import { getSupabaseAdmin, requireAuth } from "@/lib/supabase/server";
 
 function getProviderKey(provider: string): string | undefined {
   return {
@@ -102,6 +95,9 @@ async function dispatchProvider(
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireAuth(req);
+  if (auth.error) return auth.error;
+
   try {
     const { providerId, projectId, prompt, useRag } = (await req.json()) as {
       providerId: string;
@@ -114,7 +110,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing provider or prompt" }, { status: 400 });
     }
 
-    const supabaseAdmin = getAdminClient();
+    const supabaseAdmin = getSupabaseAdmin();
     const { data: provider, error: providerError } = await supabaseAdmin
       .from("model_providers")
       .select("id, provider, model, status")

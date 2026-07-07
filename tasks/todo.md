@@ -62,3 +62,11 @@ Risk is low because the app currently shows the starter page only. Rollback is t
 - Local production build passed.
 - Vercel production deploy succeeded: `dpl_5kxDbTVM5UjPep4rMjMhVP8Hvyak`.
 - Live production alias verified with HTTP 200: `https://shaggy-ai-os.vercel.app`.
+
+2026-07-07 02:53 CEST:
+
+- `OPENAI_API_KEY` added to Vercel production environment.
+- Fixed malformed line-number prefixes in `src/lib/supabase/client.ts`.
+- Local production build passed after the fix.
+- Vercel production redeploy succeeded: `dpl_5Ars7AQ38o7ARu3dCDD3vycWzE2v`.
+- Live production alias verified with HTTP 200: `https://shaggy-ai-os.vercel.app`.

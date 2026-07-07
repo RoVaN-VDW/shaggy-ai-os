@@ -1,27 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-
-function getAdminClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error("Missing Supabase service role configuration");
-  return createClient(url, key);
-}
+import { getSupabaseAdmin, requireAuth } from "@/lib/supabase/server";
 
 async function extractTextPreview(file: File, bytes: ArrayBuffer, maxChars: number): Promise<string> {
   const ext = file.name.split(".").pop()?.toLowerCase();
   if (ext === "txt" || ext === "md" || ext === "markdown") {
-    const text = new TextDecoder().decode(bytes).slice(0, maxChars);
-    return text;
+    return new TextDecoder().decode(bytes).slice(0, maxChars);
   }
   if (ext === "pdf") {
-    // PDF text extraction is a future improvement; return truncated bytes for now
     return `[PDF: ${file.name}] — text extraction pending`;
   }
   return `[${file.type || ext}] ${file.name}`;
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireAuth(req);
+  if (auth.error) return auth.error;
+
   try {
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
@@ -46,7 +40,7 @@ export async function POST(req: NextRequest) {
     const bytes = await file.arrayBuffer();
     const path = `docs/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9_.-]/g, "_")}`;
 
-    const supabaseAdmin = getAdminClient();
+    const supabaseAdmin = getSupabaseAdmin();
 
     const { error: uploadError } = await supabaseAdmin.storage
       .from("knowledge")
@@ -78,9 +72,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, path, name: file.name });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Upload failed" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: err instanceof Error ? err.message : "Upload failed" }, { status: 500 });
   }
 }
