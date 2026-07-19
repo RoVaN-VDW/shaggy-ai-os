@@ -91,13 +91,9 @@ export function ProviderConfigDialog({ provider, onStatusChange }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger
-        render={
-          <Button variant="ghost" size="sm" className="h-7 text-[10px] text-[#94a3b8] hover:text-[#00d4ff] hover:bg-[#00d4ff]/10">
-            <Settings2 className="w-3 h-3 mr-1" /> Configure
-          </Button>
-        }
-      />
+      <DialogTrigger className="inline-flex items-center h-7 px-2 text-[10px] rounded-md text-[#94a3b8] hover:text-[#00d4ff] hover:bg-[#00d4ff]/10 transition-colors">
+        <Settings2 className="w-3 h-3 mr-1" /> Configure
+      </DialogTrigger>
       <DialogContent className="bg-[#0b0f17] border-[#1e293b] text-[#f1f5f9] max-w-md">
         <DialogHeader>
           <DialogTitle className="text-[#f1f5f9] flex items-center gap-2">

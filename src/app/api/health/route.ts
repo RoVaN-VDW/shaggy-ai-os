@@ -1,34 +1,45 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin, requireAuth } from "@/lib/supabase/server";
+import {
+  getProviderKey,
+  getProviderLabel,
+  getRuntimeModel,
+  normalizeProvider,
+} from "@/lib/api/providers";
+import { publicError, rateLimit, withTimeout } from "@/lib/api/security";
 
-const HEALTH_ENDPOINTS: Record<string, (model: string, key: string) => Promise<Response>> = {
-  openai: async (_model, key) =>
+type HealthCheck = (model: string, key: string, signal: AbortSignal) => Promise<Response>;
+
+const HEALTH_ENDPOINTS: Record<string, HealthCheck> = {
+  openai: (_model, key, signal) =>
     fetch("https://api.openai.com/v1/models", {
       headers: { Authorization: `Bearer ${key}` },
-      method: "GET",
+      signal,
     }),
-  kimi: async (_model, key) =>
-    fetch("https://api.moonshot.cn/v1/models", {
+  kimi: (_model, key, signal) =>
+    fetch("https://api.moonshot.ai/v1/models", {
       headers: { Authorization: `Bearer ${key}` },
-      method: "GET",
+      signal,
     }),
-  gemini: async (model, key) =>
-    fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}?key=${key}`),
-  claude: async (_model, key) =>
+  gemini: (model, key, signal) =>
+    fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}`, {
+      headers: { "x-goog-api-key": key },
+      signal,
+    }),
+  anthropic: (_model, key, signal) =>
     fetch("https://api.anthropic.com/v1/models", {
-      headers: { "x-api-key": key, "anthropic-version": "2023-06-01" },
-    }),
-  anthropic: async (_model, key) =>
-    fetch("https://api.anthropic.com/v1/models", {
-      headers: { "x-api-key": key, "anthropic-version": "2023-06-01" },
-    }),
-  antigravity: async (_model, key) =>
-    fetch("https://api.antigravity.co/v1/health", {
-      headers: { Authorization: `Bearer ${key}` },
+      headers: {
+        "x-api-key": key,
+        "anthropic-version": "2023-06-01",
+      },
+      signal,
     }),
 };
 
 export async function GET(req: NextRequest) {
+  const limited = rateLimit(req, "health", 20);
+  if (limited) return limited;
+
   const auth = await requireAuth(req);
   if (auth.error) return auth.error;
 
@@ -39,61 +50,72 @@ export async function GET(req: NextRequest) {
       .select("id, provider, model, status");
 
     if (error || !providers) {
-      return NextResponse.json({ error: error?.message || "No providers" }, { status: 500 });
+      return NextResponse.json({ error: "Provider health data is unavailable." }, { status: 500 });
     }
 
     const results = await Promise.all(
-      providers.map(async (p) => {
-        const providerKey = p.provider.toLowerCase() as keyof typeof HEALTH_ENDPOINTS;
-        const key =
-          {
-            openai: process.env.OPENAI_API_KEY,
-            kimi: process.env.KIMI_API_KEY,
-            gemini: process.env.GEMINI_API_KEY,
-            antigravity: process.env.ANTIGRAVITY_API_KEY,
-            claude: process.env.ANTHROPIC_API_KEY,
-            anthropic: process.env.ANTHROPIC_API_KEY,
-          }[providerKey] ?? undefined;
+      providers.map(async (provider) => {
+        const providerKey = normalizeProvider(provider.provider);
+        const runtimeModel = getRuntimeModel(provider.provider, provider.model);
+        const key = getProviderKey(provider.provider);
+        const healthFn = providerKey ? HEALTH_ENDPOINTS[providerKey] : undefined;
 
-        const healthFn = HEALTH_ENDPOINTS[providerKey];
-        let health = "unknown";
+        let health = "unsupported";
         let latency = 0;
+        let checked = false;
 
-        if (!key) {
+        if (healthFn && !key) {
           health = "missing_key";
-        } else if (healthFn) {
-          const start = Date.now();
+        } else if (healthFn && key) {
+          checked = true;
+          const startedAt = Date.now();
+          const timeout = withTimeout(15_000);
           try {
-            const res = await healthFn(p.model, key);
-            latency = Date.now() - start;
-            health = res.ok ? "healthy" : `unhealthy (${res.status})`;
-          } catch (err) {
-            health = `error: ${err instanceof Error ? err.message : "failed"}`;
+            const response = await healthFn(runtimeModel, key, timeout.signal);
+            latency = Date.now() - startedAt;
+            health = response.ok ? "healthy" : `unhealthy (${response.status})`;
+          } catch {
+            latency = Date.now() - startedAt;
+            health = "error";
+          } finally {
+            timeout.done();
           }
-        } else {
-          health = "unsupported";
         }
 
-        const status = health === "healthy" ? "active" : "error";
+        const update: { health_status: string; last_seen_at?: string } = {
+          health_status: health,
+        };
+        if (checked) update.last_seen_at = new Date().toISOString();
 
-        await supabaseAdmin
+        const { error: updateError } = await supabaseAdmin
           .from("model_providers")
-          .update({ health_status: health, last_seen_at: new Date().toISOString() })
-          .eq("id", p.id);
+          .update(update)
+          .eq("id", provider.id);
+
+        if (updateError) {
+          console.error("Provider health update failed", {
+            providerId: provider.id,
+            message: updateError.message,
+          });
+        }
 
         return {
-          id: p.id,
-          provider: p.provider,
-          model: p.model,
+          id: provider.id,
+          provider: getProviderLabel(provider.provider),
+          model: runtimeModel,
           health,
           latency,
-          status,
+          status: health === "healthy" ? "active" : "error",
         };
       })
     );
 
     return NextResponse.json({ ok: true, providers: results });
-  } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : "Unknown error" }, { status: 500 });
+  } catch (error) {
+    console.error("Health check failed", error);
+    return NextResponse.json(
+      { error: publicError(error, "Health check failed.") },
+      { status: 500 }
+    );
   }
 }
