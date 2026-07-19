@@ -12,13 +12,28 @@ export function getSupabaseAdmin() {
 export async function requireAuth(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
   const token = authHeader?.replace(/^Bearer\s+/i, "");
+
   if (!token) {
     return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
   }
-  const supabase = getSupabaseAdmin();
-  const { data: { user }, error } = await supabase.auth.getUser(token);
+
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) {
+    return { error: NextResponse.json({ error: "Authentication is not configured" }, { status: 503 }) };
+  }
+  const userClient = createClient(url, anonKey, {
+    global: { headers: { Authorization: `Bearer ${token}` } },
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { data: { user }, error } = await userClient.auth.getUser(token);
   if (error || !user) {
     return { error: NextResponse.json({ error: "Invalid session" }, { status: 401 }) };
   }
-  return { user };
+
+  const { data: authorized, error: authorizationError } = await userClient.rpc("is_shaggy_authorized");
+  if (authorizationError || authorized !== true) {
+    return { error: NextResponse.json({ error: "Access is not authorized" }, { status: 403 }) };
+  }
+  return { user, client: userClient };
 }
