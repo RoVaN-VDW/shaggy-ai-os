@@ -33,24 +33,27 @@ RETURNS TABLE(
 )
 LANGUAGE sql
 STABLE
+SET search_path = ''
 AS $$
   SELECT
     kc.id,
     kc.doc_id,
     kc.chunk_index,
     kc.content,
-    1 - (kc.embedding <=> query_embedding) AS similarity,
+    1 - (kc.embedding OPERATOR(public.<=>) query_embedding) AS similarity,
     kc.metadata
   FROM public.knowledge_chunks kc
   WHERE
     kc.embedding IS NOT NULL
-    AND 1 - (kc.embedding <=> query_embedding) > match_threshold
+    AND 1 - (kc.embedding OPERATOR(public.<=>) query_embedding) > match_threshold
     AND (
-      p_project_id IS NULL
-      OR kc.project_id IS NULL
-      OR kc.project_id = p_project_id
+      (p_project_id IS NULL AND kc.project_id IS NULL)
+      OR (
+        p_project_id IS NOT NULL
+        AND (kc.project_id IS NULL OR kc.project_id = p_project_id)
+      )
     )
-  ORDER BY kc.embedding <=> query_embedding
+  ORDER BY kc.embedding OPERATOR(public.<=>) query_embedding
   LIMIT match_count;
 $$;
 

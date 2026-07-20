@@ -13,7 +13,12 @@ test("Release migration enforces a private knowledge bucket and global-plus-proj
   assert.match(source, /INSERT INTO storage\.buckets[\s\S]*'knowledge'[\s\S]*false/);
   assert.match(source, /UPDATE storage\.buckets[\s\S]*public\s*=\s*false[\s\S]*id\s*=\s*'knowledge'/);
   assert.match(source, /CREATE POLICY "Authorized knowledge object access"/);
-  assert.match(source, /kc\.project_id IS NULL\s+OR kc\.project_id = p_project_id/);
+  assert.match(source, /p_project_id IS NULL\s+AND kc\.project_id IS NULL/);
+  assert.match(
+    source,
+    /p_project_id IS NOT NULL[\s\S]*kc\.project_id IS NULL\s+OR kc\.project_id = p_project_id/,
+  );
+  assert.match(source, /STABLE\s+SET search_path = ''/);
 });
 
 test("Client-submitted usage is stored and presented as an estimate", async () => {
