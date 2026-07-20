@@ -3,7 +3,7 @@
 import { FormEvent, ReactNode, useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { ArrowRight, CheckCircle2, Loader2, LockKeyhole, Orbit } from "lucide-react";
-import { supabase } from "@/lib/supabase/client";
+import { isSupabaseClientConfigured, supabase } from "@/lib/supabase/client";
 import { resolveAuthBoundaryState } from "@/lib/auth/auth-boundary";
 import { buildSanitizedAuthCallbackUrl } from "@/lib/auth/auth-callback";
 import {
@@ -14,13 +14,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 export function AuthGate({ children }: { children: ReactNode }) {
+  const supabaseConfigured = isSupabaseClientConfigured();
   const [session, setSession] = useState<Session | null>(null);
-  const [boundary, setBoundary] = useState<AuthBoundarySnapshot>({
-    status: "checking",
-    hasSession: false,
-    checkedAt: null,
-    error: null,
-  });
+  const [boundary, setBoundary] = useState<AuthBoundarySnapshot>(() =>
+    supabaseConfigured
+      ? { status: "checking", hasSession: false, checkedAt: null, error: null }
+      : {
+          status: "error",
+          hasSession: false,
+          checkedAt: null,
+          error: "Supabase browser configuration is unavailable.",
+        },
+  );
   const [email, setEmail] = useState("");
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
@@ -28,6 +33,12 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true;
+    if (!supabaseConfigured) {
+      return () => {
+        active = false;
+      };
+    }
+
     const applySession = async (nextSession: Session | null) => {
       if (!active) return;
       setSession(nextSession);
@@ -89,7 +100,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
       active = false;
       listener.subscription.unsubscribe();
     };
-  }, []);
+  }, [supabaseConfigured]);
 
   async function requestMagicLink(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
