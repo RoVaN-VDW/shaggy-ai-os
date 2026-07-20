@@ -33,6 +33,26 @@ type Budget = {
   source: "model_providers.cost_profile";
 };
 
+type MetricAvailability = "available" | "partial" | "unavailable" | "stale" | "error";
+type MetricConfidence = "provider-reported" | "server-measured" | "recorded-estimate" | "manual-configuration" | "unknown";
+type MetricWindow = {
+  type: "selected-period" | "calendar-month" | "unknown";
+  startAt: string | null;
+  endAt: string | null;
+  resetAt: string | null;
+};
+
+type TokenMetric = {
+  value: number | null;
+  unit: "tokens";
+  availability: MetricAvailability;
+  source: string | null;
+  observedAt: string | null;
+  confidence: MetricConfidence;
+  window: MetricWindow;
+  reason: string | null;
+};
+
 function finiteNumber(value: unknown): number | null {
   const numeric = typeof value === "number" ? value : Number(value);
   return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
@@ -86,6 +106,53 @@ function eventNumbers(event: UsageLedgerEvent) {
   };
 }
 
+function latestObservedAt(events: UsageLedgerEvent[]): string | null {
+  return events.reduce<string | null>((latest, event) => {
+    if (!latest || event.created_at > latest) return event.created_at;
+    return latest;
+  }, null);
+}
+
+function unavailableProviderRemaining(): TokenMetric {
+  return {
+    value: null,
+    unit: "tokens",
+    availability: "unavailable",
+    source: null,
+    observedAt: null,
+    confidence: "unknown",
+    window: { type: "unknown", startAt: null, endAt: null, resetAt: null },
+    reason: "No provider-reported remaining-token source is connected.",
+  };
+}
+
+function ownerBudgetMetric(budget: Budget | null, generatedAt: string): TokenMetric {
+  if (!budget || budget.remainingTokens === null) {
+    return {
+      value: null,
+      unit: "tokens",
+      availability: "unavailable",
+      source: budget?.source ?? null,
+      observedAt: budget ? generatedAt : null,
+      confidence: budget ? "manual-configuration" : "unknown",
+      window: budget
+        ? { type: "calendar-month", startAt: null, endAt: budget.resetsAt, resetAt: budget.resetsAt }
+        : { type: "unknown", startAt: null, endAt: null, resetAt: null },
+      reason: "No owner-configured token budget is available.",
+    };
+  }
+  return {
+    value: budget.remainingTokens,
+    unit: "tokens",
+    availability: "available",
+    source: budget.source,
+    observedAt: generatedAt,
+    confidence: "manual-configuration",
+    window: { type: "calendar-month", startAt: null, endAt: budget.resetsAt, resetAt: budget.resetsAt },
+    reason: null,
+  };
+}
+
 export function buildUsageSummary({
   events,
   budgetEvents = events,
@@ -105,6 +172,12 @@ export function buildUsageSummary({
   currency: { code: "EUR"; sourceCurrency: "USD"; usdToEurRate: number; source: "ECB"; asOf: string };
   truncated?: boolean;
 }) {
+  const selectedPeriodWindow: MetricWindow = {
+    type: "selected-period",
+    startAt: new Date(new Date(generatedAt).getTime() - periodDays * 86_400_000).toISOString(),
+    endAt: generatedAt,
+    resetAt: null,
+  };
   const projectNames = new Map(projects.map((project) => [project.id, project.name]));
   const modelProviders = new Map(
     providers.map((provider) => [`${provider.provider.toLowerCase()}::${provider.model.toLowerCase()}`, provider]),
@@ -161,6 +234,12 @@ export function buildUsageSummary({
     const budgetMetrics = summarize(budgetModelBuckets.get(key) ?? []);
     const first = items[0];
     const configured = modelProviders.get(key);
+    const budget = configuredBudget(
+      configured?.cost_profile,
+      budgetMetrics.costEstimate,
+      budgetMetrics.tokens,
+      generatedAt,
+    );
     return {
       provider: first?.provider ?? configured?.provider ?? "unknown",
       model: first?.model ?? configured?.model ?? "unknown",
@@ -169,12 +248,21 @@ export function buildUsageSummary({
       lastSeenAt: configured?.last_seen_at ?? first?.created_at ?? null,
       observationStatus: items.length > 0 ? "observed" as const : "configured-unobserved" as const,
       ...metrics,
-      budget: configuredBudget(
-        configured?.cost_profile,
-        budgetMetrics.costEstimate,
-        budgetMetrics.tokens,
-        generatedAt,
-      ),
+      budget,
+      intelligence: {
+        recorded: {
+          value: metrics.tokens,
+          unit: "tokens" as const,
+          availability: "available" as const,
+          source: "supabase:usage_events",
+          observedAt: latestObservedAt(items),
+          confidence: "recorded-estimate" as const,
+          window: selectedPeriodWindow,
+          reason: items.length === 0 ? "No recorded events in the selected period." : null,
+        },
+        providerRemaining: unavailableProviderRemaining(),
+        ownerBudget: ownerBudgetMetric(budget, generatedAt),
+      },
     };
   }).sort((left, right) => right.costEstimate - left.costEstimate || right.tokens - left.tokens);
 
@@ -242,6 +330,44 @@ export function buildUsageSummary({
     claudeObservedModels: observedModels.filter((model) => isClaude(model.provider)).length,
     claudeCatalog: { state: "unavailable" as const, source: null },
   };
+  const configuredProviderNames = [...new Set(providers.map((provider) => provider.provider.toLowerCase()))];
+  const measuredProviderNames = [...new Set(
+    models.filter((model) => model.requests > 0).map((model) => model.provider.toLowerCase()),
+  )];
+  const portfolioProviderNames = [...new Set([...configuredProviderNames, ...measuredProviderNames])];
+  const unavailableProviders = portfolioProviderNames.filter((provider) => !measuredProviderNames.includes(provider));
+  const portfolioBudget = internalBudget.remainingTokens !== null && internalBudget.resetsAt
+    ? ownerBudgetMetric({
+        monthlyCostEur: internalBudget.monthlyCostEur,
+        remainingCostEur: internalBudget.remainingCostEur,
+        monthlyTokens: internalBudget.monthlyTokens,
+        remainingTokens: internalBudget.remainingTokens,
+        period: "monthly",
+        resetsAt: internalBudget.resetsAt,
+        source: internalBudget.source,
+      }, generatedAt)
+    : ownerBudgetMetric(null, generatedAt);
+  const intelligence = {
+    recorded: {
+      value: totalsBase.tokens,
+      unit: "tokens" as const,
+      availability: "available" as const,
+      source: "supabase:usage_events",
+      observedAt: latestObservedAt(events),
+      confidence: "recorded-estimate" as const,
+      window: selectedPeriodWindow,
+      reason: events.length === 0 ? "No recorded events in the selected period." : null,
+    },
+    ownerBudgetRemaining: portfolioBudget,
+    providerRemaining: unavailableProviderRemaining(),
+    providerRemainingComparable: false,
+    coverage: {
+      measuredProviders: measuredProviderNames.length,
+      configuredProviders: portfolioProviderNames.length,
+      unavailableProviders,
+      ratio: portfolioProviderNames.length === 0 ? 0 : measuredProviderNames.length / portfolioProviderNames.length,
+    },
+  };
 
   return {
     generatedAt,
@@ -260,6 +386,7 @@ export function buildUsageSummary({
     },
     totals: { ...totalsBase, remainingProviderCredits: null, cachedTokens: null, contextRemaining: null },
     internalBudget,
+    intelligence,
     catalog,
     quality: {
       recordedTokens: { state: "recorded" as const, source: "supabase:usage_events" },
@@ -270,7 +397,7 @@ export function buildUsageSummary({
     providers: providerRows,
     projects: projectRows,
     trend,
-    recent: events.slice(0, 8),
+    recent: events.slice(0, 36),
   };
 }
 

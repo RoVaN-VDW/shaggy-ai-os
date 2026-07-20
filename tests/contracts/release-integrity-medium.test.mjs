@@ -5,6 +5,7 @@ import { test } from "node:test";
 const migrationUrl = new URL("../../supabase/migrations/20260719020000_release_integrity.sql", import.meta.url);
 const usageUrl = new URL("../../src/app/api/llm/usage/event/route.ts", import.meta.url);
 const modelsUrl = new URL("../../src/app/models/page.tsx", import.meta.url);
+const cockpitUrl = new URL("../../src/features/models-costs/token-current-cockpit.tsx", import.meta.url);
 const securityUrl = new URL("../../src/lib/api/security.ts", import.meta.url);
 const nextConfigUrl = new URL("../../next.config.ts", import.meta.url);
 
@@ -22,15 +23,17 @@ test("Release migration enforces a private knowledge bucket and global-plus-proj
 });
 
 test("Client-submitted usage is stored and presented as an estimate", async () => {
-  const [migration, usage, models] = await Promise.all([
+  const [migration, usage, models, cockpit] = await Promise.all([
     readFile(migrationUrl, "utf8"),
     readFile(usageUrl, "utf8"),
     readFile(modelsUrl, "utf8"),
+    readFile(cockpitUrl, "utf8"),
   ]);
   assert.match(migration, /trust_level/);
   assert.match(usage, /trust_level:\s*"client-reported"/);
   assert.match(usage, /trust:\s*"client-reported-estimate"/);
-  assert.match(models, /Client-reported events are estimates/);
+  assert.match(cockpit, /recorded estimate/);
+  assert.match(cockpit, /ledger estimate/);
 });
 
 test("Best-effort local rate limiter does not trust arbitrary x-forwarded-for and prunes buckets", async () => {

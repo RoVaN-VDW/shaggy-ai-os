@@ -110,6 +110,54 @@ test("collective internal token capacity includes only configured budgets and ex
   assert.deepEqual(summary.quality.providerQuota, { state: "unavailable", source: null });
 });
 
+test("token intelligence exposes provenance, freshness, windows, and unavailable provider quota per model", () => {
+  const sol = summary.models.find((item) => item.model === "sol");
+  assert.deepEqual(sol?.intelligence.recorded, {
+    value: 1850,
+    unit: "tokens",
+    availability: "available",
+    source: "supabase:usage_events",
+    observedAt: "2026-07-19T11:00:00.000Z",
+    confidence: "recorded-estimate",
+    window: {
+      type: "selected-period",
+      startAt: "2026-06-19T12:00:00.000Z",
+      endAt: "2026-07-19T12:00:00.000Z",
+      resetAt: null,
+    },
+    reason: null,
+  });
+  assert.deepEqual(sol?.intelligence.providerRemaining, {
+    value: null,
+    unit: "tokens",
+    availability: "unavailable",
+    source: null,
+    observedAt: null,
+    confidence: "unknown",
+    window: { type: "unknown", startAt: null, endAt: null, resetAt: null },
+    reason: "No provider-reported remaining-token source is connected.",
+  });
+  assert.equal(sol?.intelligence.ownerBudget?.confidence, "manual-configuration");
+  assert.equal(sol?.intelligence.ownerBudget?.value, 8150);
+  assert.equal(sol?.intelligence.ownerBudget?.window.resetAt, "2026-08-01T00:00:00.000Z");
+});
+
+test("portfolio totals only aggregate comparable metrics and expose measured coverage", () => {
+  assert.equal(summary.intelligence.recorded.value, 4350);
+  assert.equal(summary.intelligence.recorded.unit, "tokens");
+  assert.equal(summary.intelligence.recorded.confidence, "recorded-estimate");
+  assert.deepEqual(summary.intelligence.coverage, {
+    measuredProviders: 2,
+    configuredProviders: 3,
+    unavailableProviders: ["anthropic"],
+    ratio: 2 / 3,
+  });
+  assert.equal(summary.intelligence.ownerBudgetRemaining.value, 2008150);
+  assert.equal(summary.intelligence.providerRemaining.value, null);
+  assert.equal(summary.intelligence.providerRemaining.availability, "unavailable");
+  assert.equal(summary.intelligence.providerRemainingComparable, false);
+});
+
 test("catalog coverage distinguishes configured, observed, and unavailable official Claude inventory", () => {
   assert.deepEqual(summary.catalog, {
     configuredModels: 3,
@@ -174,27 +222,41 @@ test("usage event ingest writes through the authenticated RLS client without a s
   assert.ok(source.indexOf("await requireAuth(req)") < source.indexOf("auth.client"));
 });
 
-test("Models & Costs page states ledger truth and never labels estimates as provider billing", async () => {
-  const source = await readFile(new URL("../../src/app/models/page.tsx", import.meta.url), "utf8");
-  assert.match(source, /Recorded ledger/);
-  assert.match(source, /Internal tokens left/);
+test("Token Intelligence states ledger truth and never labels estimates as provider billing", async () => {
+  const [page, cockpit] = await Promise.all([
+    readFile(new URL("../../src/app/models/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../../src/features/models-costs/token-current-cockpit.tsx", import.meta.url), "utf8"),
+  ]);
+  const source = `${page}\n${cockpit}`;
+  assert.match(source, /Token Intelligence/);
+  assert.match(source, /recorded usage/i);
+  assert.match(source, /Owner budget left/);
+  assert.match(source, /niet providerquota/);
+  assert.match(source, /Provider remaining/);
+  assert.match(source, /geen vergelijkbare bron aangesloten/);
   assert.match(source, /currency:\s*"EUR"/);
-  assert.match(source, /ECB/);
-  assert.match(source, /remainingTokens/);
-  assert.match(source, /configured-unobserved/);
-  assert.match(source, /Claude API catalog unavailable/);
-  assert.match(source, /Provider billing unavailable/);
-  assert.match(source, /cached tokens unavailable/i);
+  assert.match(cockpit, /summary\.currency\.source/);
+  assert.match(source, /provider-reported/);
+  assert.match(source, /recorded-estimate/);
+  assert.match(source, /quota, cache en context blijven onbekend zonder bron/);
+  assert.match(page, /15_000/);
+  assert.match(page, /postgres_changes/);
   assert.doesNotMatch(source, /DEMO LIVE/);
 });
 
-test("Models & Costs keeps operational typography readable", async () => {
-  const source = await readFile(new URL("../../src/app/models/page.tsx", import.meta.url), "utf8");
+test("Token Intelligence keeps fixed-screen operational typography readable", async () => {
+  const [page, cockpit] = await Promise.all([
+    readFile(new URL("../../src/app/models/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../../src/features/models-costs/token-current-cockpit.tsx", import.meta.url), "utf8"),
+  ]);
+  const source = `${page}\n${cockpit}`;
   assert.doesNotMatch(source, /text-\[(?:8|9|10|11|12)px\]/);
   assert.match(source, /text-\[13px\]/);
   assert.match(source, /text-\[14px\]/);
   assert.match(source, /text-\[15px\]/);
   assert.match(source, /text-\[16px\]/);
+  assert.match(source, /text-\[24px\]/);
   assert.match(source, /text-\[32px\]/);
-  assert.match(source, /h-full min-h-0.*overflow-auto/);
+  assert.match(page, /h-full min-h-0.*overflow-hidden/);
+  assert.match(cockpit, /min-h-0 overflow-auto/);
 });
