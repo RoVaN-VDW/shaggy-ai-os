@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { useAuthBoundary } from "@/components/auth-boundary-context";
 import { canAccessCockpitData } from "@/lib/auth/auth-boundary";
+import { fetchLocalProviders } from "@/lib/api/local-providers";
 import {
   createInitialResourceStates,
   markResourcesRefreshing,
@@ -106,7 +107,6 @@ export type CockpitState = {
   knowledgeDocs: KnowledgeDoc[];
   agentActivity: AgentActivity[];
   refresh: () => void;
-  updateProviderStatus: (id: string, status: string) => Promise<void>;
   updateReviewStatus: (id: string, status: string) => Promise<void>;
   markNotificationRead: (id: string) => Promise<void>;
   clearAllNotifications: () => Promise<void>;
@@ -153,7 +153,6 @@ export function useCockpitData(): CockpitState {
     knowledgeDocs: [],
     agentActivity: [],
     refresh: () => {},
-    updateProviderStatus: async () => {},
     updateReviewStatus: async () => {},
     markNotificationRead: async () => {},
     clearAllNotifications: async () => {},
@@ -181,10 +180,7 @@ export function useCockpitData(): CockpitState {
         activityRes,
       ] = await Promise.all([
         fetchLocalProjects(),
-        supabase
-          .from("model_providers")
-          .select("id, provider, model, status, cost_profile, policy_profile, last_seen_at, health_status")
-          .order("created_at", { ascending: false }),
+        fetchLocalProviders(),
         supabase
           .from("review_items")
           .select("id, title, risk_level, status, project_id, proposed_action")
@@ -232,7 +228,9 @@ export function useCockpitData(): CockpitState {
         ...s,
         loading: false,
         error: errors.length > 0 ? errors.join("; ") : null,
-        resources: resolveCockpitResourceStates(s.resources, resourceErrors, fetchedAt),
+        resources: resolveCockpitResourceStates(s.resources, resourceErrors, fetchedAt, {
+          ...(providersRes.observedAt === null ? {} : { providers: providersRes.observedAt }),
+        }),
         projects: resolveResourceData(s.projects, projectsRes.data as Project[] | null, resourceErrors.projects),
         providers: resolveResourceData(s.providers, providersRes.data as ModelProvider[] | null, resourceErrors.providers),
         reviews: resolveResourceData(s.reviews, reviewsRes.data as ReviewItem[] | null, resourceErrors.reviews),
@@ -260,16 +258,6 @@ export function useCockpitData(): CockpitState {
     if (!canAccessCockpitData(auth.status)) return;
     const initialFetch = window.setTimeout(() => void fetchData(), 0);
     return () => window.clearTimeout(initialFetch);
-  }, [auth.status, fetchData]);
-
-  const updateProviderStatus = useCallback(async (id: string, status: string) => {
-    if (!canAccessCockpitData(auth.status)) throw new Error("Cockpit access is not authorized");
-    const { error } = await supabase
-      .from("model_providers")
-      .update({ status })
-      .eq("id", id);
-    if (error) throw new Error(error.message);
-    await fetchData();
   }, [auth.status, fetchData]);
 
   const updateReviewStatus = useCallback(async (id: string, status: string) => {
@@ -334,7 +322,6 @@ export function useCockpitData(): CockpitState {
   return {
     ...state,
     refresh: fetchData,
-    updateProviderStatus,
     updateReviewStatus,
     markNotificationRead,
     clearAllNotifications,

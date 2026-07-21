@@ -1,6 +1,6 @@
 export const COCKPIT_RESOURCE_SOURCES = {
   projects: "local-api:projects",
-  providers: "supabase:model_providers",
+  providers: "local-api:providers",
   reviews: "supabase:review_items",
   usage: "supabase:usage_events",
   dailyUsage: "supabase:get_daily_usage",
@@ -68,11 +68,12 @@ export function resolveCockpitResourceStates(
   previous: CockpitResourceStates,
   errors: Record<CockpitResourceKey, string | null>,
   fetchedAt: string,
+  observedAt: Partial<Record<CockpitResourceKey, string>> = {},
 ): CockpitResourceStates {
   return Object.fromEntries(
     (Object.keys(COCKPIT_RESOURCE_SOURCES) as CockpitResourceKey[]).map((key) => [
       key,
-      resolveResourceState(previous[key], errors[key], fetchedAt),
+      resolveResourceState(previous[key], errors[key], observedAt[key] ?? fetchedAt),
     ]),
   ) as CockpitResourceStates;
 }
