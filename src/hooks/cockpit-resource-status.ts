@@ -1,5 +1,5 @@
 export const COCKPIT_RESOURCE_SOURCES = {
-  projects: "supabase:projects",
+  projects: "local-api:projects",
   providers: "supabase:model_providers",
   reviews: "supabase:review_items",
   usage: "supabase:usage_events",

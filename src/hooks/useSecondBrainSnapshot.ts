@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase/client";
 import type { SecondBrainSnapshot } from "@/lib/second-brain/snapshot";
 import {
   CAPABILITY_REGISTRY,
@@ -33,22 +32,16 @@ export function useSecondBrainSnapshot(): SecondBrainSnapshotState {
   });
   useEffect(() => {
     let active = true;
-    void supabase.auth.getSession().then(async ({ data, error }) => {
-      if (!active) return;
-      if (error || !data.session?.access_token) {
-        const message = error?.message ?? "Authenticated session unavailable.";
-        setState({ status: "error", snapshot: null, error: message, truth: twinTruth(null, message) });
-        return;
-      }
+    void (async () => {
       try {
-        const response = await fetch("/api/second-brain", { headers: { Authorization: `Bearer ${data.session.access_token}` }, cache: "no-store" });
+        const response = await fetch("/api/second-brain", { cache: "no-store" });
         const payload = await response.json() as {
           snapshot?: SecondBrainSnapshot;
           error?: string;
           availability?: "local-only";
         };
         if (payload.availability === "local-only") {
-          throw new Error("Local AI Workspace snapshot required. This source is unavailable on clean cloud deployments.");
+          throw new Error("Local AI Workspace snapshot required. The local source is currently unavailable.");
         }
         if (!response.ok || !payload.snapshot) throw new Error(payload.error ?? `Snapshot request failed (${response.status})`);
         if (active) setState({
@@ -66,7 +59,7 @@ export function useSecondBrainSnapshot(): SecondBrainSnapshotState {
           truth: twinTruth(null, message),
         });
       }
-    });
+    })();
     return () => { active = false; };
   }, []);
   return state;

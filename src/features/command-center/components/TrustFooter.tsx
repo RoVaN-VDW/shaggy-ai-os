@@ -10,7 +10,7 @@ export function TrustFooter() {
       </div>
       <div data-dream-region="trust-status-footer">
         <ShieldCheck />
-        <span><b>Private by design</b><small>Authenticated session · truthful telemetry</small></span>
+        <span><b>Private by design</b><small>Loopback-only runtime · truthful telemetry</small></span>
       </div>
       <Link href="/settings" data-dream-region="brand-promise">
         <span><b>Strategic Hybrid Agentic</b><small>Governance & Growth Yield</small></span>

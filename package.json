@@ -3,14 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -H 127.0.0.1",
     "voice:companion": "bash services/voice-companion/start.sh",
     "snapshot:second-brain": "node scripts/build-second-brain-snapshot.mjs",
     "build": "node scripts/run-with-node-path.mjs next build --webpack",
-    "start": "next start",
+    "start": "next start -H 127.0.0.1",
+    "owner:open": "node scripts/open-local-owner.mjs",
     "lint": "node scripts/run-with-node-path.mjs eslint src next.config.ts eslint.config.mjs",
     "typecheck": "node scripts/run-with-node-path.mjs tsc --noEmit -p tsconfig.json",
-    "test": "node --no-warnings --test \"tests/**/*.test.mjs\"",
+    "test": "node --no-warnings --test --test-concurrency=1 \"tests/**/*.test.mjs\"",
     "verify:golden-frame": "node scripts/golden-frame-contract.mjs",
     "verify:security": "python3 scripts/verify-auth-hardening.py && python3 scripts/verify-auth-ui.py && python3 scripts/verify-knowledge-delete.py && python3 scripts/verify-embedding-lifecycle.py",
     "verify": "pnpm verify:golden-frame && pnpm test && pnpm verify:security && pnpm lint && pnpm typecheck && pnpm build"

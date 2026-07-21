@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, Boxes, RefreshCcw } from "lucide-react";
 import { TokenCurrentCockpit } from "@/features/models-costs/token-current-cockpit";
 import type { UsageSummary } from "@/features/models-costs/usage-summary";
-import { fetchWithAuth, supabase } from "@/lib/supabase/client";
 
 const PERIODS = [
   { label: "24H", days: 1 },
@@ -21,12 +20,12 @@ export default function ModelsCostsPage() {
   const [summary, setSummary] = useState<UsageSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [streamStatus, setStreamStatus] = useState<"connecting" | "realtime" | "polling">("connecting");
+  const streamStatus = "polling" as const;
 
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
     try {
-      const response = await fetchWithAuth(`/api/llm/usage/summary?days=${days}`, { cache: "no-store" });
+      const response = await fetch(`/api/llm/usage/summary?days=${days}`, { cache: "no-store" });
       const payload = await response.json() as UsageSummary | { error?: string };
       if (isErrorPayload(payload)) throw new Error(payload.error || "Usage summary unavailable.");
       if (!response.ok) throw new Error("Usage summary unavailable.");
@@ -42,17 +41,9 @@ export default function ModelsCostsPage() {
   useEffect(() => {
     const initialFetch = window.setTimeout(() => void load(), 0);
     const interval = window.setInterval(() => void load(true), 15_000);
-    const channel = supabase.channel("models-costs-ledger")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "usage_events" }, () => void load(true))
-      .subscribe((status) => {
-        if (status === "SUBSCRIBED") setStreamStatus("realtime");
-        else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") setStreamStatus("polling");
-        else setStreamStatus("connecting");
-      });
     return () => {
       window.clearTimeout(initialFetch);
       window.clearInterval(interval);
-      void supabase.removeChannel(channel);
     };
   }, [load]);
 
@@ -92,6 +83,7 @@ export default function ModelsCostsPage() {
       </header>
 
       {error && <div role="alert" className="flex shrink-0 items-center gap-2 rounded-lg border border-[color-mix(in_srgb,var(--dream-danger)_35%,transparent)] bg-[color-mix(in_srgb,var(--dream-danger)_8%,transparent)] px-3 py-2 text-[14px] text-[var(--dream-danger)]"><AlertTriangle className="size-4" />{error}</div>}
+      {summary && summary.alerts.length > 0 && <div role="status" className="flex shrink-0 items-center gap-2 rounded-lg border border-[color-mix(in_srgb,var(--dream-gold)_35%,transparent)] bg-[color-mix(in_srgb,var(--dream-gold)_7%,transparent)] px-3 py-2 text-[14px] text-[var(--dream-gold-hot)]"><AlertTriangle className="size-4" />{summary.alerts.length} usage-alert{summary.alerts.length === 1 ? "" : "s"} · {summary.alerts[0].message}</div>}
       {summary?.truncated && <div role="status" className="shrink-0 rounded-lg border border-[color-mix(in_srgb,var(--dream-gold)_35%,transparent)] px-3 py-2 text-[14px] text-[var(--dream-gold-hot)]">Gedeeltelijke weergave: deze periode overschreed de 10.000-event safety cap.</div>}
 
       {summary ? (

@@ -52,6 +52,38 @@ export function validateJsonSize(req: NextRequest) {
   return null;
 }
 
+export async function readBoundedJson(req: NextRequest) {
+  if (req.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() !== "application/json") {
+    return { body: null, error: NextResponse.json({ error: "application/json required." }, { status: 415 }) };
+  }
+  const reader = req.body?.getReader();
+  if (!reader) return { body: null, error: NextResponse.json({ error: "Missing JSON body." }, { status: 400 }) };
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > MAX_BODY_BYTES) {
+        await reader.cancel();
+        return { body: null, error: NextResponse.json({ error: "Request is too large." }, { status: 413 }) };
+      }
+      chunks.push(value);
+    }
+    const raw = Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).toString("utf8");
+    const body: unknown = JSON.parse(raw);
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return { body: null, error: NextResponse.json({ error: "JSON object required." }, { status: 400 }) };
+    }
+    return { body: body as Record<string, unknown>, error: null };
+  } catch {
+    return { body: null, error: NextResponse.json({ error: "Invalid JSON." }, { status: 400 }) };
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 export function validatePrompt(prompt: unknown) {
   if (typeof prompt !== "string" || !prompt.trim()) {
     return "Missing prompt";

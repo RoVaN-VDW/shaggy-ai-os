@@ -1,103 +1,162 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { execFile, execFileSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, realpathSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-const SCRIPT = fileURLToPath(new URL("../../scripts/sync_hermes_usage.py", import.meta.url));
-const ROUTE = new URL("../../src/app/api/llm/usage/event/route.ts", import.meta.url);
+const ROOT = fileURLToPath(new URL("../..", import.meta.url));
+const WRAPPER = path.join(ROOT, "scripts", "sync_hermes_usage.py");
+const execFileAsync = promisify(execFile);
 
-function makeFixtureDb() {
-  const dir = mkdtempSync(path.join(tmpdir(), "hermes-sync-"));
-  const dbPath = path.join(dir, "state.db");
-  const now = Math.floor(Date.now() / 1000);
-  const python = `
-import sqlite3, json
-conn = sqlite3.connect(${JSON.stringify(dbPath)})
+function fixtureDb() {
+  const dir = mkdtempSync(path.join(realpathSync(tmpdir()), "hermes-wrapper-"));
+  const db = path.join(dir, "state.db");
+  const ledger = path.join(dir, "usage.sqlite3");
+  const now = Date.now() / 1000;
+  execFileSync("python3", ["-c", `
+import sqlite3
+conn=sqlite3.connect(${JSON.stringify(db)})
 conn.execute("""CREATE TABLE session_model_usage (
-  session_id TEXT, model TEXT, billing_provider TEXT, billing_base_url TEXT,
-  billing_mode TEXT, task TEXT, api_call_count INTEGER,
-  input_tokens INTEGER, output_tokens INTEGER,
-  cache_read_tokens INTEGER, cache_write_tokens INTEGER, reasoning_tokens INTEGER,
-  estimated_cost_usd REAL, actual_cost_usd REAL,
-  cost_status TEXT, cost_source TEXT, first_seen REAL, last_seen REAL
-)""")
-conn.execute("INSERT INTO session_model_usage VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-  ("sess-1", "k3", "custom:kimi-k3", None, None, None, 4,
-   12000, 3400, 50000, 8000, 1100, 0.042, None, "estimated", "pricing", ${now - 3600}, ${now - 60}))
-conn.execute("INSERT INTO session_model_usage VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-  ("sess-2", "gpt-5.6-sol", "openai-codex", None, None, None, 2,
-   8000, 2100, 0, 0, 0, 0.031, 0.029, "actual", "invoice", ${now - 7200}, ${now - 120}))
+ session_id TEXT, model TEXT, billing_provider TEXT, billing_mode TEXT, task TEXT,
+ api_call_count INTEGER, input_tokens INTEGER, output_tokens INTEGER,
+ cache_read_tokens INTEGER, cache_write_tokens INTEGER, reasoning_tokens INTEGER,
+ estimated_cost_usd REAL, actual_cost_usd REAL, cost_status TEXT, cost_source TEXT,
+ first_seen REAL, last_seen REAL)""")
+conn.execute("INSERT INTO session_model_usage VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+ ("s1","k3","custom:kimi-k3","api","code",2,100,20,40,5,7,None,None,"unknown",None,${now - 10},${now}))
 conn.commit()
-`;
-  execFileSync("python3", ["-c", python]);
-  return { dir, dbPath, now };
+`]);
+  return { db, ledger };
 }
 
-function runSync(args) {
-  return execFileSync("python3", [SCRIPT, ...args], { encoding: "utf8" });
-}
-
-test("hermes sync transforms measured rows into ingest-compatible events", () => {
-  const { dbPath } = makeFixtureDb();
-  const out = runSync(["--db", dbPath, "--json", "--days", "30"]);
-  const events = out.trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
-  assert.equal(events.length, 2);
-
-  const k3 = events.find((event) => event.model === "k3");
-  assert.equal(k3.provider, "custom:kimi-k3");
-  assert.equal(k3.inputTokens, 12000);
-  assert.equal(k3.outputTokens, 3400);
-  assert.equal(k3.costEstimate, 0.042);
-  assert.ok(!Number.isNaN(Date.parse(k3.occurredAt)));
-  assert.ok(Date.parse(k3.occurredAt) <= Date.now());
-  assert.equal(k3.latencyMs, undefined);
-  assert.equal(k3._sync.source, "hermes:state.db:session_model_usage");
-  assert.equal(k3._sync.costStatus, "estimated");
-  assert.deepEqual(k3._sync.unimportedTokens, { cacheRead: 50000, cacheWrite: 8000, reasoning: 1100 });
-
-  const sol = events.find((event) => event.model === "gpt-5.6-sol");
-  assert.equal(sol.costEstimate, 0.029);
-  assert.equal(sol._sync.costStatus, "actual");
+test("legacy Hermes sync is a wrapper around the single local collector", async () => {
+  const source = await readFile(WRAPPER, "utf8");
+  assert.match(source, /local_usage_ledger\.py/);
+  assert.match(source, /preview-hermes/);
+  assert.doesNotMatch(source, /SELECT .*session_model_usage|load_rows/i);
 });
 
-test("hermes sync cache and reasoning tokens are never folded into input/output", () => {
-  const { dbPath } = makeFixtureDb();
-  const out = runSync(["--db", dbPath, "--json"]);
-  const k3 = out.trim().split("\n").map((line) => JSON.parse(line)).find((event) => event.model === "k3");
-  assert.equal(k3.inputTokens + k3.outputTokens, 15400);
-  assert.ok(k3._sync.unimportedTokens.cacheRead > 0);
-});
-
-test("hermes sync watermark makes repeat runs idempotent", () => {
-  const { dir, dbPath } = makeFixtureDb();
+test("legacy CLI preserves side-effect-free JSON and its historical flags", () => {
+  const help = execFileSync("python3", [WRAPPER, "--help"], { encoding: "utf8" });
+  for (const flag of ["--days", "--watermark", "--json", "--post", "--full"]) assert.match(help, new RegExp(flag));
+  const { db } = fixtureDb();
+  const dir = mkdtempSync(path.join(realpathSync(tmpdir()), "hermes-wrapper-contract-"));
   const watermark = path.join(dir, "watermark.json");
-  const first = runSync(["--db", dbPath, "--json", "--watermark", watermark]);
-  const rows = first.trim().split("\n").map((line) => JSON.parse(line));
-  const state = Object.fromEntries(rows.map((event) => [
-    `${event._sync.sessionId}|${event.model}|${event.provider}`,
-    Date.parse(event.occurredAt) / 1000,
-  ]));
-  writeFileSync(watermark, JSON.stringify(state));
-  const saved = JSON.parse(readFileSync(watermark, "utf8"));
-  assert.ok(Object.keys(saved).length >= 1);
+  const output = execFileSync("python3", [WRAPPER, "--db", db, "--watermark", watermark, "--days", "30", "--json"], { encoding: "utf8" });
+  const rows = output.trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0]._sync.source, "hermes:state.db:session_model_usage");
+  assert.equal(rows[0].status, "unknown");
+  assert.equal(existsSync(watermark), false);
 });
 
-test("usage event endpoint accepts historical occurredAt and rejects future timestamps", async () => {
-  const source = await readFile(ROUTE, "utf8");
-  assert.match(source, /parseOccurredAt/);
-  assert.match(source, /FUTURE_SKEW_MS/);
-  assert.match(source, /MAX_EVENT_AGE_DAYS/);
-  assert.match(source, /created_at: occurredAt/);
-  assert.match(source, /Invalid occurredAt timestamp/);
-  assert.match(source, /trust_level:\s*"client-reported"/);
-  assert.doesNotMatch(source, /trust_level:\s*"provider-reported"/);
+test("legacy --post accepts its historical URL argument and writes a watermark after success", async (context) => {
+  const received = [];
+  const server = createServer((request, response) => {
+    let body = "";
+    request.setEncoding("utf8");
+    request.on("data", (chunk) => { body += chunk; });
+    request.on("end", () => {
+      received.push(JSON.parse(body));
+      response.writeHead(201).end();
+    });
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  context.after(() => server.close());
+
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const { db } = fixtureDb();
+  const dir = mkdtempSync(path.join(realpathSync(tmpdir()), "hermes-wrapper-post-"));
+  const watermark = path.join(dir, "watermark.json");
+  const url = `http://127.0.0.1:${address.port}/api/llm/usage/event`;
+  const { stdout } = await execFileAsync("python3", [
+    WRAPPER, "--db", db, "--watermark", watermark, "--post", url,
+  ], { encoding: "utf8" });
+
+  assert.deepEqual(JSON.parse(stdout), { scanned: 1, posted: 1 });
+  assert.equal(received.length, 1);
+  assert.equal(received[0].status, "unknown");
+  assert.equal(existsSync(watermark), true);
 });
 
-test("usage event endpoint stores null latency instead of fabricating zero", async () => {
-  const source = await readFile(ROUTE, "utf8");
-  assert.match(source, /latency_ms:\s*latencyMs == null \? null/);
+test("legacy watermark suppresses repeat posts while --full intentionally bypasses it", async (context) => {
+  let requests = 0;
+  const server = createServer((request, response) => {
+    request.resume();
+    request.on("end", () => {
+      requests += 1;
+      response.writeHead(201).end();
+    });
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  context.after(() => server.close());
+
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const { db } = fixtureDb();
+  const dir = mkdtempSync(path.join(realpathSync(tmpdir()), "hermes-wrapper-watermark-"));
+  const watermark = path.join(dir, "watermark.json");
+  const url = `http://127.0.0.1:${address.port}/api/llm/usage/event`;
+  const args = [WRAPPER, "--db", db, "--watermark", watermark, "--post", url];
+
+  const first = JSON.parse((await execFileAsync("python3", args, { encoding: "utf8" })).stdout);
+  const second = JSON.parse((await execFileAsync("python3", args, { encoding: "utf8" })).stdout);
+  const full = JSON.parse((await execFileAsync("python3", [...args, "--full"], { encoding: "utf8" })).stdout);
+
+  assert.deepEqual(first, { scanned: 1, posted: 1 });
+  assert.deepEqual(second, { scanned: 0, posted: 0 });
+  assert.deepEqual(full, { scanned: 1, posted: 1 });
+  assert.equal(requests, 2);
+});
+
+test("legacy --json remains side-effect-free when combined with --post", async (context) => {
+  let requests = 0;
+  const server = createServer((_request, response) => {
+    requests += 1;
+    response.writeHead(201).end();
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  context.after(() => server.close());
+
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const { db } = fixtureDb();
+  const dir = mkdtempSync(path.join(realpathSync(tmpdir()), "hermes-wrapper-json-post-"));
+  const watermark = path.join(dir, "watermark.json");
+  const url = `http://127.0.0.1:${address.port}/api/llm/usage/event`;
+  const { stdout } = await execFileAsync("python3", [
+    WRAPPER, "--db", db, "--watermark", watermark, "--json", "--post", url,
+  ], { encoding: "utf8" });
+
+  const rows = stdout.trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].status, "unknown");
+  assert.equal(requests, 0);
+  assert.equal(existsSync(watermark), false);
+});
+
+test("compatibility wrapper writes idempotently to the central ledger", () => {
+  const { db, ledger } = fixtureDb();
+  const first = JSON.parse(execFileSync("python3", [WRAPPER, "--db", db, "--ledger", ledger], { encoding: "utf8" }));
+  const second = JSON.parse(execFileSync("python3", [WRAPPER, "--db", db, "--ledger", ledger], { encoding: "utf8" }));
+  assert.equal(first.inserted, 1);
+  assert.equal(second.updated, 1);
+  assert.ok(readFileSync(ledger).length > 0);
+});
+
+test("authenticated ingest route preserves nullable cost and separate token classes", async () => {
+  const route = await readFile(path.join(ROOT, "src/app/api/llm/usage/event/route.ts"), "utf8");
+  assert.match(route, /insertLocalProviderUsage/);
+  assert.match(route, /cache_read_tokens/);
+  assert.match(route, /cache_write_tokens/);
+  assert.match(route, /reasoning_tokens/);
+  assert.match(route, /actual_cost_usd/);
+  assert.match(route, /estimated_cost_usd/);
+  assert.doesNotMatch(route, /usage_events|trust_level:\s*"provider-reported"/);
 });

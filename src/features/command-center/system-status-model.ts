@@ -23,56 +23,56 @@ export function buildSystemStatusModel({ auth }: SystemStatusInput): SystemStatu
   if (auth.status === "authorized" && auth.checkedAt) {
     return [
       {
-        label: "Session",
-        value: "Authenticated",
+        label: "Runtime",
+        value: "Local only",
         tone: "success",
-        evidence: `supabase:auth · ${auth.checkedAt}`,
+        evidence: `loopback-host-policy · ${auth.checkedAt}`,
       },
       {
         label: "Access policy",
-        value: "Allowlisted",
+        value: "Local owner",
         tone: "success",
-        evidence: `supabase:is_shaggy_authorized · ${auth.checkedAt}`,
+        evidence: `local-owner · ${auth.checkedAt}`,
       },
     ];
   }
 
-  if (auth.status === "forbidden" && auth.hasSession && auth.checkedAt) {
+  if (auth.status === "forbidden" && auth.checkedAt) {
     return [
       {
-        label: "Session",
-        value: "Authenticated",
-        tone: "success",
-        evidence: `supabase:auth · ${auth.checkedAt}`,
-      },
-      {
-        label: "Access policy",
+        label: "Runtime",
         value: "Blocked",
         tone: "error",
-        evidence: `supabase:is_shaggy_authorized · ${auth.checkedAt}`,
+        evidence: `loopback-host-policy · ${auth.checkedAt}`,
+      },
+      {
+        label: "Access policy",
+        value: "Denied",
+        tone: "error",
+        evidence: `local-owner · ${auth.checkedAt} · ${auth.error ?? "non-local request"}`,
       },
     ];
   }
 
-  if (auth.status === "error" && auth.hasSession && auth.checkedAt) {
+  if (auth.status === "error" && auth.checkedAt) {
     return [
       {
-        label: "Session",
-        value: "Authenticated",
-        tone: "success",
-        evidence: `supabase:auth · ${auth.checkedAt}`,
+        label: "Runtime",
+        value: "Verification unavailable",
+        tone: "error",
+        evidence: `loopback-host-policy · ${auth.checkedAt} · ${auth.error ?? "unknown error"}`,
       },
       {
         label: "Access policy",
-        value: "Verification unavailable",
-        tone: "error",
-        evidence: `supabase:is_shaggy_authorized · ${auth.checkedAt} · ${auth.error ?? "unknown error"}`,
+        value: "Unavailable",
+        tone: "muted",
+        evidence: `local-owner · ${auth.checkedAt} · not verified`,
       },
     ];
   }
 
   return [
-    { label: "Session", value: "Unavailable", tone: "muted", evidence: "supabase:auth · not verified" },
-    { label: "Access policy", value: "Unavailable", tone: "muted", evidence: "supabase:is_shaggy_authorized · not verified" },
+    { label: "Runtime", value: "Checking", tone: "muted", evidence: "loopback-host-policy · not verified" },
+    { label: "Access policy", value: "Unavailable", tone: "muted", evidence: "local-owner · not verified" },
   ];
 }

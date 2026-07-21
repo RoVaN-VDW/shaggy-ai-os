@@ -11,7 +11,6 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { supabase } from "@/lib/supabase/client";
 
 type Project = {
   id: string;
@@ -21,9 +20,26 @@ type Project = {
   status: string;
   type: string | null;
   created_at: string;
+  updated_at: string;
 };
 
 const emptyDraft = { name: "", description: "", type: "product" };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function apiError(payload: unknown, fallback: string): string {
+  return isRecord(payload) && typeof payload.error === "string" ? payload.error : fallback;
+}
+
+async function readPayload(response: Response): Promise<unknown> {
+  try {
+    return await response.json();
+  } catch {
+    throw new Error("Local projects response is malformed.");
+  }
+}
 
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -35,18 +51,25 @@ export default function ProjectsPage() {
   const [draft, setDraft] = useState(emptyDraft);
 
   useEffect(() => {
-    void supabase
-      .from("projects")
-      .select("id, name, description, health_score, status, type, created_at")
-      .order("created_at", { ascending: true })
-      .then(({ data, error: loadError }) => {
-        setLoading(false);
-        if (loadError) {
-          setError(loadError.message);
-          return;
-        }
-        setProjects(data ?? []);
-      });
+    let active = true;
+    async function loadProjects() {
+      try {
+        const response = await fetch("/api/projects", {
+          cache: "no-store",
+          headers: { Accept: "application/json" },
+        });
+        const payload = await readPayload(response);
+        if (!response.ok) throw new Error(apiError(payload, `Local projects request failed (${response.status}).`));
+        if (!isRecord(payload) || !Array.isArray(payload.projects)) throw new Error("Local projects response is malformed.");
+        if (active) setProjects(payload.projects as Project[]);
+      } catch (loadError) {
+        if (active) setError(loadError instanceof Error ? loadError.message : "Local projects source is unavailable.");
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+    void loadProjects();
+    return () => { active = false; };
   }, []);
 
   async function createProject(event: FormEvent<HTMLFormElement>) {
@@ -55,19 +78,35 @@ export default function ProjectsPage() {
     if (!name) return;
     setSaving(true);
     setError(null);
-    const { data, error: createError } = await supabase
-      .from("projects")
-      .insert({ name, description: draft.description.trim() || null, type: draft.type, status: "active", health_score: 0 })
-      .select("id, name, description, health_score, status, type, created_at")
-      .single();
-    setSaving(false);
-    if (createError || !data) {
-      setError(createError?.message || "Project could not be created.");
-      return;
+    try {
+      const response = await fetch("/api/projects", {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "Idempotency-Key": crypto.randomUUID(),
+        },
+        body: JSON.stringify({
+          name,
+          description: draft.description.trim() || null,
+          type: draft.type || null,
+        }),
+      });
+      const payload = await readPayload(response);
+      if (!response.ok) throw new Error(apiError(payload, `Project could not be created (${response.status}).`));
+      if (!isRecord(payload) || !isRecord(payload.project) || typeof payload.project.id !== "string") {
+        throw new Error("Local project mutation response is malformed.");
+      }
+      const project = payload.project as Project;
+      setProjects((current) => current.some(({ id }) => id === project.id) ? current : [...current, project]);
+      setDraft(emptyDraft);
+      setCreateOpen(false);
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : "Project could not be created.");
+    } finally {
+      setSaving(false);
     }
-    setProjects((current) => [...current, data]);
-    setDraft(emptyDraft);
-    setCreateOpen(false);
   }
 
   return (
@@ -107,7 +146,7 @@ export default function ProjectsPage() {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="border-border bg-popover/95 sm:max-w-lg">
           <form onSubmit={createProject} className="grid gap-4">
-            <DialogHeader><DialogTitle>Create project</DialogTitle><DialogDescription>Set up a new workspace for conversations, knowledge and tracked provider usage.</DialogDescription></DialogHeader>
+            <DialogHeader><DialogTitle>Create project</DialogTitle><DialogDescription>Set up a new local workspace for conversations, knowledge and tracked provider usage.</DialogDescription></DialogHeader>
             <div className="grid gap-2"><Label htmlFor="project-name">Name</Label><Input id="project-name" autoFocus required maxLength={100} value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} placeholder="Project name" /></div>
             <div className="grid gap-2"><Label htmlFor="project-description">Description</Label><Textarea id="project-description" maxLength={600} value={draft.description} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} placeholder="What is this project responsible for?" /></div>
             <div className="grid gap-2"><Label>Type</Label><Select value={draft.type} onValueChange={(value) => setDraft((current) => ({ ...current, type: value ?? "product" }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="product">Product</SelectItem><SelectItem value="business">Business</SelectItem><SelectItem value="research">Research</SelectItem><SelectItem value="personal">Personal</SelectItem></SelectContent></Select></div>

@@ -18,9 +18,9 @@ import {
 export type Project = {
   id: string;
   name: string;
-  description: string;
+  description: string | null;
   status: string;
-  type: string;
+  type: string | null;
   health_score: number;
 };
 
@@ -113,6 +113,31 @@ export type CockpitState = {
   addNotification: (n: Omit<Notification, "id" | "created_at">) => Promise<void>;
 };
 
+type ResourceResult<T> = {
+  data: T[] | null;
+  error: { message: string } | null;
+};
+
+async function fetchLocalProjects(): Promise<ResourceResult<Project>> {
+  try {
+    const response = await fetch("/api/projects", {
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    });
+    const payload = await response.json() as { projects?: unknown; error?: unknown };
+    if (!response.ok) {
+      throw new Error(typeof payload.error === "string" ? payload.error : `Local projects request failed (${response.status})`);
+    }
+    if (!Array.isArray(payload.projects)) throw new Error("Local projects response is malformed");
+    return { data: payload.projects as Project[], error: null };
+  } catch (error) {
+    return {
+      data: null,
+      error: { message: error instanceof Error ? error.message : "Local projects source is unavailable" },
+    };
+  }
+}
+
 export function useCockpitData(): CockpitState {
   const auth = useAuthBoundary();
   const [state, setState] = useState<CockpitState>({
@@ -155,10 +180,7 @@ export function useCockpitData(): CockpitState {
         knowledgeRes,
         activityRes,
       ] = await Promise.all([
-        supabase
-          .from("projects")
-          .select("id, name, description, status, type, health_score")
-          .order("updated_at", { ascending: false }),
+        fetchLocalProjects(),
         supabase
           .from("model_providers")
           .select("id, provider, model, status, cost_profile, policy_profile, last_seen_at, health_status")

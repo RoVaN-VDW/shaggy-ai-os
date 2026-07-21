@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static regression contract for SHAGGY's passwordless auth form."""
+"""Static regression contract for SHAGGY's local-only access boundary."""
 
 from __future__ import annotations
 
@@ -8,26 +8,48 @@ import re
 from pathlib import Path
 
 
+def require(errors: list[str], condition: bool, message: str) -> None:
+    if not condition:
+        errors.append(message)
+
+
 def main() -> int:
-    source = Path("src/components/auth-gate.tsx").read_text(encoding="utf-8")
+    gate = Path("src/components/auth-gate.tsx").read_text(encoding="utf-8")
+    access = Path("src/lib/local/access.ts").read_text(encoding="utf-8")
+    package = json.loads(Path("package.json").read_text(encoding="utf-8"))
     errors: list[str] = []
 
-    if not re.search(r"<form\b[^>]*onSubmit=\{requestMagicLink\}", source):
-        errors.append("magic-link form is not wired to requestMagicLink")
-
-    button_match = re.search(
-        r"(<Button\b[^>]*>.*?Send secure link.*?</Button>)",
-        source,
-        re.DOTALL,
+    require(errors, "resolveLocalAccess" in gate, "auth gate does not use the local access policy")
+    require(errors, "useSyncExternalStore" in gate, "auth gate is not hydration-safe")
+    require(errors, "AuthBoundaryProvider" in gate, "authorized local evidence is not shared with consumers")
+    require(errors, "Local runtime required" in gate, "non-local fail-closed state is missing")
+    require(
+        errors,
+        not re.search(r"supabase|signInWithOtp|magic link|requestMagicLink", gate, re.IGNORECASE),
+        "cloud or magic-link auth remains in the application gate",
     )
-    if not button_match:
-        errors.append("magic-link submit control is missing")
-    elif not re.search(r'\btype=["\']submit["\']', button_match.group(1)):
-        errors.append("magic-link button is not an explicit submit control")
+    require(
+        errors,
+        all(host in access for host in ('"localhost"', '"127.0.0.1"', '"::1"')),
+        "loopback hostname allowlist is incomplete",
+    )
+    require(errors, "non-loopback-host" in access and "cross-origin" in access, "local policy is not fail-closed")
+
+    scripts = package.get("scripts", {})
+    require(
+        errors,
+        bool(re.search(r"(?:--hostname|-H)\s+127\.0\.0\.1", scripts.get("dev", ""))),
+        "development server is not bound to loopback",
+    )
+    require(
+        errors,
+        bool(re.search(r"(?:--hostname|-H)\s+127\.0\.0\.1", scripts.get("start", ""))),
+        "production server is not bound to loopback",
+    )
 
     result = {
         "status": "pass" if not errors else "fail",
-        "contracts": 2,
+        "contracts": 9,
         "errors": errors,
     }
     print(json.dumps(result, indent=2, sort_keys=True))

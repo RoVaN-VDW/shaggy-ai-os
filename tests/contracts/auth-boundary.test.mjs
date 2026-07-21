@@ -7,7 +7,7 @@ import {
   resolveAuthBoundaryState,
 } from "../../src/lib/auth/auth-boundary.ts";
 
-const serverAuthUrl = new URL("../../src/lib/supabase/server.ts", import.meta.url);
+const serverAuthUrl = new URL("../../src/lib/local/server.ts", import.meta.url);
 
 test("auth boundary requires explicit allowlist proof before authorizing cockpit access", () => {
   assert.equal(resolveAuthBoundaryState({ hasSession: false, allowlisted: null, error: null }), "anonymous");
@@ -25,12 +25,11 @@ test("cockpit data access stays closed for every state except authorized", () =>
   assert.equal(canAccessCockpitData("authorized"), true);
 });
 
-test("authenticated route verification does not require a Supabase service-role key", async () => {
+test("local route verification delegates to the fail-closed loopback policy", async () => {
   const source = await readFile(serverAuthUrl, "utf8");
-  const requireAuthSource = source.slice(source.indexOf("export async function requireAuth"));
 
-  assert.doesNotMatch(requireAuthSource, /getSupabaseAdmin|SUPABASE_SERVICE_ROLE_KEY/);
-  assert.match(requireAuthSource, /NEXT_PUBLIC_SUPABASE_ANON_KEY/);
-  assert.match(requireAuthSource, /auth\.getUser\(token\)/);
-  assert.match(requireAuthSource, /rpc\("is_shaggy_authorized"\)/);
+  assert.match(source, /export async function requireLocalAccess/);
+  assert.match(source, /resolveLocalAccess/);
+  assert.match(source, /status:\s*403/);
+  assert.doesNotMatch(source, /supabase|service.role/i);
 });

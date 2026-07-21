@@ -43,6 +43,10 @@ next-env.d.ts
 # build output
 /dist
 
+# Python bytecode caches
+__pycache__/
+*.py[cod]
+
 # local mockups
 _mockups/
 

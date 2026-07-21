@@ -8,7 +8,7 @@ async function source(path) {
   return readFile(new URL(path, root), "utf8");
 }
 
-test("auth proof is shared with cockpit consumers and gates every initial data fetch", async () => {
+test("local access proof is shared with cockpit consumers and gates every initial data fetch", async () => {
   const [authGate, cockpitHook] = await Promise.all([
     source("src/components/auth-gate.tsx"),
     source("src/hooks/useCockpitData.ts"),
@@ -16,8 +16,9 @@ test("auth proof is shared with cockpit consumers and gates every initial data f
 
   assert.doesNotMatch(authGate, /NODE_ENV\s*===?\s*["']development["']/);
   assert.match(authGate, /AuthBoundaryProvider/);
-  assert.match(authGate, /buildSanitizedAuthCallbackUrl/);
-  assert.match(authGate, /window\.history\.replaceState/);
+  assert.match(authGate, /resolveLocalAccess/);
+  assert.match(authGate, /useSyncExternalStore/);
+  assert.doesNotMatch(authGate, /supabase|magic link|signInWithOtp/i);
   assert.match(cockpitHook, /useAuthBoundary\(\)/);
   assert.match(cockpitHook, /canAccessCockpitData\(auth\.status\)/);
 });

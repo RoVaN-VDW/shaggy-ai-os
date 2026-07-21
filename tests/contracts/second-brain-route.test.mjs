@@ -4,9 +4,9 @@ import { test } from "node:test";
 
 const routeUrl = new URL("../../src/app/api/second-brain/route.ts", import.meta.url);
 
-test("Second Brain route authorizes before reading a private aggregate snapshot", async () => {
+test("Second Brain route verifies local access before reading a private aggregate snapshot", async () => {
   const source = await readFile(routeUrl, "utf8");
-  const authIndex = source.indexOf("requireAuth(req)");
+  const authIndex = source.indexOf("requireLocalAccess(req)");
   const readIndex = source.indexOf("readFile(");
   assert.ok(authIndex >= 0 && readIndex > authIndex);
   assert.match(source, /rateLimit\(req, "second-brain",/);

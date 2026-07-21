@@ -20,6 +20,7 @@ const providers = [
 const currency = { code: "EUR", sourceCurrency: "USD", usdToEurRate: 0.9, source: "ECB", asOf: "2026-07-17" };
 const euroInputs = convertUsageInputsToEuro({ events, providers, usdToEurRate: currency.usdToEurRate });
 
+
 const summary = buildUsageSummary({
   events: euroInputs.events,
   providers: euroInputs.providers,
@@ -48,7 +49,59 @@ test("ledger costs and legacy USD budgets convert to euro without relabeling", (
   assert.equal("monthly_budget_usd" in converted.providers[0].cost_profile, false);
 });
 
-test("usage summary aggregates exact recorded ledger fields without inventing cache or provider credit", () => {
+test("unknown cost remains null through currency conversion and summary aggregation", () => {
+  const unknown = { ...events[0], id: "unknown-cost", cost_estimate: null, cost_status: "unknown" };
+  const converted = convertUsageInputsToEuro({ events: [unknown], providers: [], usdToEurRate: 0.9 });
+  const result = buildUsageSummary({
+    events: converted.events,
+    providers: [],
+    projects: [],
+    periodDays: 1,
+    generatedAt: "2026-07-19T12:00:00.000Z",
+    currency,
+  });
+  assert.equal(converted.events[0].cost_estimate, null);
+  assert.equal(result.totals.costEstimate, null);
+  assert.equal(result.totals.unknownCostRequests, 1);
+  assert.equal(result.totals.costCoverage, 0);
+});
+
+test("aggregate error events count every failed API call", () => {
+  const result = buildUsageSummary({
+    events: [{ ...events[1], api_call_count: 4 }],
+    providers: [], projects: [], periodDays: 1,
+    generatedAt: "2026-07-19T12:00:00.000Z", currency,
+  });
+  assert.equal(result.totals.requests, 4);
+  assert.equal(result.totals.failedRequests, 4);
+  assert.equal(result.totals.successRate, 0);
+});
+
+test("unknown aggregate outcomes never produce a fabricated success rate", () => {
+  const native = { ...events[0], status: "unknown", api_call_count: 4, metadata: { trust_level: "native-aggregate" } };
+  const result = buildUsageSummary({
+    events: [native], providers: [], projects: [], periodDays: 1,
+    generatedAt: "2026-07-19T12:00:00.000Z", currency,
+  });
+  assert.equal(result.totals.successRate, null);
+  assert.equal(result.totals.unknownOutcomeRequests, 4);
+  assert.equal(result.models[0].trustLevel, "native-aggregate");
+  assert.match(result.models[0].intelligence.recorded.source, /native-aggregate/);
+});
+
+test("unknown or truncated monthly usage never produces an available budget remainder", () => {
+  const unknown = { ...events[0], cost_estimate: null, cost_status: "unknown" };
+  const result = buildUsageSummary({
+    events: [unknown], budgetEvents: [unknown], providers: [providers[0]], projects: [],
+    periodDays: 1, generatedAt: "2026-07-19T12:00:00.000Z", currency, truncated: true,
+  });
+  const model = result.models.find((item) => item.model === "sol");
+  assert.equal(model?.budget?.remainingCostEur, null);
+  assert.equal(model?.budget?.remainingTokens, null);
+  assert.equal(model?.intelligence.ownerBudget.availability, "unavailable");
+});
+
+test("usage summary aggregates recorded fields and keeps native cache separate from provider credit", () => {
   assert.equal(summary.totals.requests, 3);
   assert.equal(summary.totals.inputTokens, 3500);
   assert.equal(summary.totals.outputTokens, 850);
@@ -57,7 +110,8 @@ test("usage summary aggregates exact recorded ledger fields without inventing ca
   assert.equal(summary.totals.averageLatencyMs, 900);
   assert.equal(summary.truth.providerBilling, "unavailable");
   assert.equal(summary.truth.providerCredits, "unavailable");
-  assert.equal(summary.truth.cachedTokens, "unavailable");
+  assert.equal(summary.truth.cachedTokens, "available");
+  assert.equal(summary.totals.cachedTokens, 0);
   assert.equal(summary.truth.contextRemaining, "unavailable");
   assert.match(summary.truth.tokenSemantics, /fallbacks may be estimated/);
 });
@@ -95,6 +149,23 @@ test("monthly budgets use the reset window independently from the visible usage 
   assert.equal(openai?.budget?.remainingCostEur, 0.883);
 });
 
+test("configured reset day selects only the active model budget cycle", () => {
+  const resetProvider = [{
+    ...providers[0],
+    cost_profile: { monthly_token_budget: 10000, budget_reset_day: 15 },
+  }];
+  const beforeReset = { ...events[0], id: "before-reset", input_tokens: 5000, output_tokens: 0, created_at: "2026-07-10T00:00:00.000Z" };
+  const afterReset = { ...events[0], id: "after-reset", input_tokens: 1000, output_tokens: 0, created_at: "2026-07-16T00:00:00.000Z" };
+  const result = buildUsageSummary({
+    events: [afterReset], budgetEvents: [beforeReset, afterReset], providers: resetProvider,
+    projects: [], periodDays: 7, generatedAt: "2026-07-20T00:00:00.000Z", currency,
+  });
+  const model = result.models.find((item) => item.model === "sol");
+  assert.equal(model?.budget?.remainingTokens, 9000);
+  assert.equal(model?.budget?.startsAt, "2026-07-15T00:00:00.000Z");
+  assert.equal(model?.budget?.resetsAt, "2026-08-15T00:00:00.000Z");
+});
+
 test("collective internal token capacity includes only configured budgets and exposes provenance", () => {
   assert.deepEqual(summary.internalBudget, {
     configuredModels: 2,
@@ -102,11 +173,12 @@ test("collective internal token capacity includes only configured budgets and ex
     remainingCostEur: 0.973,
     monthlyTokens: 2010000,
     remainingTokens: 2008150,
+    startsAt: "2026-07-01T00:00:00.000Z",
     resetsAt: "2026-08-01T00:00:00.000Z",
-    source: "model_providers.cost_profile",
+    source: "local-sqlite:model_budgets",
   });
-  assert.deepEqual(summary.quality.recordedTokens, { state: "recorded", source: "supabase:usage_events" });
-  assert.deepEqual(summary.quality.internalBudget, { state: "calculated", source: "model_providers.cost_profile" });
+  assert.deepEqual(summary.quality.recordedTokens, { state: "recorded", source: "local-sqlite:provider_usage" });
+  assert.deepEqual(summary.quality.internalBudget, { state: "calculated", source: "local-sqlite:model_budgets" });
   assert.deepEqual(summary.quality.providerQuota, { state: "unavailable", source: null });
 });
 
@@ -116,7 +188,7 @@ test("token intelligence exposes provenance, freshness, windows, and unavailable
     value: 1850,
     unit: "tokens",
     availability: "available",
-    source: "supabase:usage_events",
+    source: "local-sqlite:provider_usage",
     observedAt: "2026-07-19T11:00:00.000Z",
     confidence: "recorded-estimate",
     window: {
@@ -201,25 +273,52 @@ test("Models & Costs sidebar item is available and resolves to the module route"
   assert.deepEqual(item, { label: "Models & Costs", icon: "models", href: "/models", enabled: true, availability: "available" });
 });
 
-test("summary API authenticates before RLS-scoped reads, uses no service role, and is explicitly no-store", async () => {
+test("summary API verifies loopback access before collector reads and is explicitly no-store", async () => {
   const source = await readFile(new URL("../../src/app/api/llm/usage/summary/route.ts", import.meta.url), "utf8");
-  assert.match(source, /await requireAuth\(req\)/);
-  assert.match(source, /auth\.client/);
-  assert.doesNotMatch(source, /getSupabaseAdmin/);
-  assert.match(source, /monthStart/);
+  assert.match(source, /await requireLocalAccess\(req\)/);
+  assert.match(source, /readLocalUsageLedger/);
+  assert.doesNotMatch(source, /supabase|requireAuth|usage_events/i);
+  assert.doesNotMatch(source, /monthStart/);
   assert.match(source, /budgetEvents/);
+  assert.match(source, /periodWorkflowEvents/);
+  assert.match(source, /event\.created_at <= generatedAt/);
+  assert.match(source, /event\.occurred_at <= generatedAt/);
+  assert.match(source, /periodAlerts/);
+  assert.match(source, /Math\.max\(periodDays, 31\)/);
   assert.match(source, /getEcbUsdToEurRate/);
   assert.match(source, /convertUsageInputsToEuro/);
   assert.match(source, /Cache-Control["']?\s*:\s*["']no-store/);
-  assert.ok(source.indexOf("await requireAuth(req)") < source.indexOf("auth.client"));
+  assert.ok(source.indexOf("await requireLocalAccess(req)") < source.indexOf("readLocalUsageLedger(Math.max"));
 });
 
-test("usage event ingest writes through the authenticated RLS client without a service role", async () => {
+test("usage event ingest verifies same-origin loopback access before the local collector", async () => {
   const source = await readFile(new URL("../../src/app/api/llm/usage/event/route.ts", import.meta.url), "utf8");
-  assert.match(source, /await requireAuth\(req\)/);
-  assert.match(source, /auth\.client/);
-  assert.doesNotMatch(source, /getSupabaseAdmin/);
-  assert.ok(source.indexOf("await requireAuth(req)") < source.indexOf("auth.client"));
+  assert.match(source, /await requireLocalUsageIngestAccess\(req\)/);
+  assert.match(source, /insertLocalProviderUsage/);
+  assert.match(source, /readBoundedJson/);
+  assert.doesNotMatch(source, /req\.json\(\)/);
+  assert.match(source, /Invalid optional usage metrics/);
+  assert.match(source, /validateUsageIdentifier/);
+  assert.doesNotMatch(source, /supabase|requireAuth|usage_events/i);
+  assert.ok(source.indexOf("await requireLocalUsageIngestAccess(req)") < source.indexOf("rateLimit(req"));
+  assert.ok(source.indexOf("await requireLocalUsageIngestAccess(req)") < source.indexOf("insertLocalProviderUsage({"));
+});
+
+test("legacy usage sync token is constant-time and scoped only to usage ingest", async () => {
+  const [route, localServer, summaryRoute] = await Promise.all([
+    readFile(new URL("../../src/app/api/llm/usage/event/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../../src/lib/local/server.ts", import.meta.url), "utf8"),
+    readFile(new URL("../../src/app/api/llm/usage/summary/route.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(route, /requireLocalUsageIngestAccess\(req\)/);
+  assert.doesNotMatch(route, /requireLocalAccess\(req\)/);
+  assert.match(localServer, /SHAGGY_USAGE_TOKEN/);
+  assert.match(localServer, /Buffer\.byteLength\(configured, "utf8"\)/);
+  assert.doesNotMatch(localServer, /configured\.length/);
+  assert.match(localServer, /timingSafeEqual/);
+  assert.match(localServer, /requireLocalUsageIngestAccess/);
+  assert.match(localServer, /Bearer/);
+  assert.doesNotMatch(summaryRoute, /requireLocalUsageIngestAccess/);
 });
 
 test("Token Intelligence states ledger truth and never labels estimates as provider billing", async () => {
@@ -238,9 +337,12 @@ test("Token Intelligence states ledger truth and never labels estimates as provi
   assert.match(cockpit, /summary\.currency\.source/);
   assert.match(source, /provider-reported/);
   assert.match(source, /recorded-estimate/);
-  assert.match(source, /quota, cache en context blijven onbekend zonder bron/);
+  assert.match(source, /providerquota, credits en context blijven onbekend zonder bron/);
+  assert.match(cockpit, /Cache read/);
+  assert.match(cockpit, /Cache write/);
+  assert.match(cockpit, /Reasoning/);
   assert.match(page, /15_000/);
-  assert.match(page, /postgres_changes/);
+  assert.doesNotMatch(page, /postgres_changes|supabase\.channel/);
   assert.doesNotMatch(source, /DEMO LIVE/);
 });
 

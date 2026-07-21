@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 import { rateLimit } from "@/lib/api/security";
 import { parseSecondBrainSnapshot } from "@/lib/second-brain/snapshot";
-import { requireAuth } from "@/lib/supabase/server";
+import { requireLocalAccess } from "@/lib/local/server";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -12,8 +12,8 @@ export async function GET(req: NextRequest) {
   const limited = rateLimit(req, "second-brain", 30);
   if (limited) return limited;
 
-  const auth = await requireAuth(req);
-  if (auth.error) return auth.error;
+  const access = await requireLocalAccess(req);
+  if (access.error) return access.error;
 
   const snapshotPath = resolve(
     process.env.SECOND_BRAIN_SNAPSHOT_PATH

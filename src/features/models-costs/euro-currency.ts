@@ -67,7 +67,9 @@ export function convertUsageInputsToEuro({
   if (!Number.isFinite(usdToEurRate) || usdToEurRate <= 0) throw new Error("USD to EUR rate is invalid.");
   const convertedEvents = events.map((event) => ({
     ...event,
-    cost_estimate: round((Number(event.cost_estimate) || 0) * usdToEurRate, 6),
+    cost_estimate: event.cost_estimate == null
+      ? null
+      : round((Number(event.cost_estimate) || 0) * usdToEurRate, 6),
   }));
   const convertedProviders = providers.map((provider) => {
     const profile = { ...(provider.cost_profile ?? {}) };

@@ -1,8 +1,7 @@
 "use client";
 
-import { Bell, LogOut, Moon, Sparkles, Sun } from "lucide-react";
+import { Bell, HardDrive, Moon, Sparkles, Sun } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
-import { supabase } from "@/lib/supabase/client";
 
 export function UtilityProfile() {
   const { theme, toggleTheme } = useTheme();
@@ -22,7 +21,7 @@ export function UtilityProfile() {
       </div>
       <div className="ml-1 grid size-10 place-items-center rounded-full border border-[color-mix(in_srgb,var(--dream-gold)_48%,transparent)] bg-[radial-gradient(circle_at_35%_28%,rgba(255,211,106,.28),rgba(7,18,27,.9)_56%)] text-sm font-semibold text-[var(--dream-gold-hot)] shadow-[var(--dream-glow-gold)]" aria-hidden="true">R</div>
       <div className="min-w-20 leading-tight"><div className="text-[13px] text-[var(--dream-text)]">Ronald</div><div className="mt-1 text-[11px] text-[var(--dream-muted)]">Commander</div></div>
-      <button type="button" className={iconButton} onClick={() => void supabase.auth.signOut()} aria-label="Sign out"><LogOut className="size-4" /></button>
+      <div className={iconButton} aria-label="Local-only runtime" role="status" title="Local-only runtime"><HardDrive className="size-4" /></div>
     </div>
   );
 }

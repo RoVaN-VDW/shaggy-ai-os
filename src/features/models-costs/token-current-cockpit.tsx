@@ -222,6 +222,11 @@ function ModelDetail({ model, generatedAt }: { model: ModelRow | undefined; gene
           <div className="flex h-2 overflow-hidden rounded-full bg-white/[.06]"><i className="bg-[var(--dream-cyan-hot)]" style={{ width: `${model.tokens === 0 ? 0 : (model.inputTokens / model.tokens) * 100}%` }} /><i className="bg-[#a78bfa]" style={{ width: `${model.tokens === 0 ? 0 : (model.outputTokens / model.tokens) * 100}%` }} /></div>
           <p className="mt-1 text-[13px] text-[var(--dream-subtle)]">{compact(model.inputTokens)} input · {compact(model.outputTokens)} output</p>
         </section>
+        <section className="grid grid-cols-3 gap-2" aria-label="Afzonderlijke native tokencategorieën">
+          <span className="rounded-lg border border-[var(--dream-glass-stroke)] p-2"><small className="block text-[13px] text-[var(--dream-subtle)]">Cache read</small><b className="text-[15px] text-[var(--dream-text)]">{compact(model.cacheReadTokens)}</b></span>
+          <span className="rounded-lg border border-[var(--dream-glass-stroke)] p-2"><small className="block text-[13px] text-[var(--dream-subtle)]">Cache write</small><b className="text-[15px] text-[var(--dream-text)]">{compact(model.cacheWriteTokens)}</b></span>
+          <span className="rounded-lg border border-[var(--dream-glass-stroke)] p-2"><small className="block text-[13px] text-[var(--dream-subtle)]">Reasoning</small><b className="text-[15px] text-[var(--dream-text)]">{compact(model.reasoningTokens)}</b></span>
+        </section>
         <section className="rounded-lg border border-[var(--dream-glass-stroke)] p-3">
           <div className="mb-1 flex items-center justify-between"><span className="flex items-center gap-2 text-[14px] font-semibold text-[var(--dream-text)]"><ShieldCheck className="size-4 text-[var(--dream-muted)]" />Provider remaining</span><b className="text-[15px] text-[var(--dream-muted)]">{quota.value == null ? "—" : compact(quota.value)}</b></div>
           <p className="text-[13px] leading-5 text-[var(--dream-subtle)]">{quota.reason}</p>
@@ -231,7 +236,7 @@ function ModelDetail({ model, generatedAt }: { model: ModelRow | undefined; gene
           <p className="text-[13px] text-[var(--dream-subtle)]">{budget.value == null ? budget.reason : `reset ${resetLabel(budget.window.resetAt)}`}</p>
         </section>
         <div className="grid grid-cols-2 gap-2">
-          <section className="rounded-lg border border-[var(--dream-glass-stroke)] p-3"><CircleDollarSign className="mb-2 size-4 text-[var(--dream-gold-hot)]" /><b className="block text-[16px] text-[var(--dream-text)]">{currency(model.costEstimate, 4)}</b><span className="text-[13px] text-[var(--dream-subtle)]">ledger estimate</span></section>
+          <section className="rounded-lg border border-[var(--dream-glass-stroke)] p-3"><CircleDollarSign className="mb-2 size-4 text-[var(--dream-gold-hot)]" /><b className="block text-[16px] text-[var(--dream-text)]">{currency(model.costEstimate, 4)}</b><span className="text-[13px] text-[var(--dream-subtle)]">{model.costCoverage == null ? "geen costbron" : `${model.costCoverage}% costdekking · ledger estimate`}</span></section>
           <section className="rounded-lg border border-[var(--dream-glass-stroke)] p-3"><Gauge className="mb-2 size-4 text-[var(--dream-success)]" /><b className="block text-[16px] text-[var(--dream-text)]">{percent(model.successRate)}</b><span className="text-[13px] text-[var(--dream-subtle)]">{model.averageLatencyMs ?? "—"}ms gemiddeld</span></section>
         </div>
         <section className="space-y-2 border-t border-[var(--dream-glass-stroke)] pt-3 text-[13px]">
@@ -284,7 +289,7 @@ export function TokenCurrentCockpit({ summary, streamStatus }: { summary: UsageS
         <EventTicker summary={summary} />
         <div className="flex min-h-9 items-center justify-between gap-4 px-3 text-[13px] text-[var(--dream-subtle)]">
           <span className="flex min-w-0 items-center gap-2 truncate"><CheckCircle2 className="size-4 shrink-0 text-[var(--dream-success)]" />{summary.source} · EUR via {summary.currency.source} {summary.currency.asOf} · observed {age(summary.generatedAt)}</span>
-          <span className="flex shrink-0 items-center gap-2 text-[var(--dream-gold-hot)]"><AlertTriangle className="size-4" />quota, cache en context blijven onbekend zonder bron</span>
+          <span className="flex shrink-0 items-center gap-2 text-[var(--dream-gold-hot)]"><AlertTriangle className="size-4" />providerquota, credits en context blijven onbekend zonder bron</span>
         </div>
       </section>
     </div>

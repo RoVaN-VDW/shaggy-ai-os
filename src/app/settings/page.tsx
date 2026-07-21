@@ -65,14 +65,6 @@ export default function SettingsPage() {
     setSaved(true);
   }
 
-  const supabaseHost = (() => {
-    try {
-      return new URL(process.env.NEXT_PUBLIC_SUPABASE_URL || "").host || "Not configured";
-    } catch {
-      return "Not configured";
-    }
-  })();
-
   return (
     <div className="h-full min-h-0 flex flex-col gap-4">
       <div className="shrink-0 flex items-center justify-between">
@@ -156,10 +148,10 @@ export default function SettingsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="grid grid-cols-2 gap-4">
-            <Connection icon={<Database className="size-4" />} label="Supabase" value={supabaseHost} state={supabaseHost === "Not configured" ? "Missing" : "Configured"} />
+            <Connection icon={<Database className="size-4" />} label="Data runtime" value="This Mac · loopback only" state="Local" />
             <Connection icon={<Shield className="size-4" />} label="Provider credentials" value="Managed outside the browser" state="Not exposed" />
             <p className="col-span-2 text-xs leading-5 text-muted-foreground">
-              Secret API keys are intentionally never displayed or edited in the browser. Manage them through the deployment environment.
+              SHAGGY data stays in local server-owned stores. Secret API keys are never displayed or edited in the browser.
             </p>
           </CardContent>
         </Card>
