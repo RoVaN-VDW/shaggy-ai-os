@@ -2,13 +2,25 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase/client";
+import { useAuthBoundary } from "@/components/auth-boundary-context";
+import { canAccessCockpitData } from "@/lib/auth/auth-boundary";
+import {
+  createInitialResourceStates,
+  markResourcesRefreshing,
+  resolveCockpitResourceStates,
+  resolveResourceData,
+  resolveResourceState,
+  setNotificationReadValue,
+  type CockpitResourceKey,
+  type CockpitResourceStates,
+} from "./cockpit-resource-status";
 
 export type Project = {
   id: string;
   name: string;
-  description: string;
+  description: string | null;
   status: string;
-  type: string;
+  type: string | null;
   health_score: number;
 };
 
@@ -84,6 +96,7 @@ export type AgentActivity = {
 export type CockpitState = {
   loading: boolean;
   error: string | null;
+  resources: CockpitResourceStates;
   projects: Project[];
   providers: ModelProvider[];
   reviews: ReviewItem[];
@@ -100,10 +113,37 @@ export type CockpitState = {
   addNotification: (n: Omit<Notification, "id" | "created_at">) => Promise<void>;
 };
 
+type ResourceResult<T> = {
+  data: T[] | null;
+  error: { message: string } | null;
+};
+
+async function fetchLocalProjects(): Promise<ResourceResult<Project>> {
+  try {
+    const response = await fetch("/api/projects", {
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    });
+    const payload = await response.json() as { projects?: unknown; error?: unknown };
+    if (!response.ok) {
+      throw new Error(typeof payload.error === "string" ? payload.error : `Local projects request failed (${response.status})`);
+    }
+    if (!Array.isArray(payload.projects)) throw new Error("Local projects response is malformed");
+    return { data: payload.projects as Project[], error: null };
+  } catch (error) {
+    return {
+      data: null,
+      error: { message: error instanceof Error ? error.message : "Local projects source is unavailable" },
+    };
+  }
+}
+
 export function useCockpitData(): CockpitState {
+  const auth = useAuthBoundary();
   const [state, setState] = useState<CockpitState>({
     loading: true,
     error: null,
+    resources: createInitialResourceStates(),
     projects: [],
     providers: [],
     reviews: [],
@@ -121,7 +161,14 @@ export function useCockpitData(): CockpitState {
   });
 
   const fetchData = useCallback(async () => {
-    setState((s) => ({ ...s, loading: true, error: null }));
+    if (!canAccessCockpitData(auth.status)) return;
+    await Promise.resolve();
+    setState((s) => ({
+      ...s,
+      loading: true,
+      error: null,
+      resources: markResourcesRefreshing(s.resources),
+    }));
     try {
       const [
         projectsRes,
@@ -133,10 +180,7 @@ export function useCockpitData(): CockpitState {
         knowledgeRes,
         activityRes,
       ] = await Promise.all([
-        supabase
-          .from("projects")
-          .select("id, name, description, status, type, health_score")
-          .order("updated_at", { ascending: false }),
+        fetchLocalProjects(),
         supabase
           .from("model_providers")
           .select("id, provider, model, status, cost_profile, policy_profile, last_seen_at, health_status")
@@ -169,83 +213,123 @@ export function useCockpitData(): CockpitState {
           .limit(10),
       ]);
 
-      const errors: string[] = [];
-      if (projectsRes.error) errors.push(`projects: ${projectsRes.error.message}`);
-      if (providersRes.error) errors.push(`providers: ${providersRes.error.message}`);
-      if (reviewsRes.error) errors.push(`reviews: ${reviewsRes.error.message}`);
-      if (usageRes.error) errors.push(`usage: ${usageRes.error.message}`);
-      if (dailyUsageRes.error) errors.push(`dailyUsage: ${dailyUsageRes.error.message}`);
-      if (notificationsRes.error) errors.push(`notifications: ${notificationsRes.error.message}`);
-      if (knowledgeRes.error) errors.push(`knowledge: ${knowledgeRes.error.message}`);
-      if (activityRes.error) errors.push(`activity: ${activityRes.error.message}`);
+      const resourceErrors: Record<CockpitResourceKey, string | null> = {
+        projects: projectsRes.error?.message ?? null,
+        providers: providersRes.error?.message ?? null,
+        reviews: reviewsRes.error?.message ?? null,
+        usage: usageRes.error?.message ?? null,
+        dailyUsage: dailyUsageRes.error?.message ?? null,
+        notifications: notificationsRes.error?.message ?? null,
+        knowledgeDocs: knowledgeRes.error?.message ?? null,
+        agentActivity: activityRes.error?.message ?? null,
+      };
+      const errors = Object.entries(resourceErrors)
+        .filter((entry): entry is [CockpitResourceKey, string] => entry[1] !== null)
+        .map(([key, message]) => `${key}: ${message}`);
+      const fetchedAt = new Date().toISOString();
 
       setState((s) => ({
         ...s,
         loading: false,
         error: errors.length > 0 ? errors.join("; ") : null,
-        projects: (projectsRes.data ?? []) as Project[],
-        providers: (providersRes.data ?? []) as ModelProvider[],
-        reviews: (reviewsRes.data ?? []) as ReviewItem[],
-        usage: (usageRes.data ?? []) as UsageEvent[],
-        dailyUsage: (dailyUsageRes.data ?? []) as DailyUsage[],
-        notifications: (notificationsRes.data ?? []) as Notification[],
-        knowledgeDocs: (knowledgeRes.data ?? []) as KnowledgeDoc[],
-        agentActivity: (activityRes.data ?? []) as AgentActivity[],
+        resources: resolveCockpitResourceStates(s.resources, resourceErrors, fetchedAt),
+        projects: resolveResourceData(s.projects, projectsRes.data as Project[] | null, resourceErrors.projects),
+        providers: resolveResourceData(s.providers, providersRes.data as ModelProvider[] | null, resourceErrors.providers),
+        reviews: resolveResourceData(s.reviews, reviewsRes.data as ReviewItem[] | null, resourceErrors.reviews),
+        usage: resolveResourceData(s.usage, usageRes.data as UsageEvent[] | null, resourceErrors.usage),
+        dailyUsage: resolveResourceData(s.dailyUsage, dailyUsageRes.data as DailyUsage[] | null, resourceErrors.dailyUsage),
+        notifications: resolveResourceData(s.notifications, notificationsRes.data as Notification[] | null, resourceErrors.notifications),
+        knowledgeDocs: resolveResourceData(s.knowledgeDocs, knowledgeRes.data as KnowledgeDoc[] | null, resourceErrors.knowledgeDocs),
+        agentActivity: resolveResourceData(s.agentActivity, activityRes.data as AgentActivity[] | null, resourceErrors.agentActivity),
       }));
     } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      const resourceErrors = Object.fromEntries(
+        (Object.keys(createInitialResourceStates()) as CockpitResourceKey[]).map((key) => [key, message]),
+      ) as Record<CockpitResourceKey, string>;
       setState((s) => ({
         ...s,
         loading: false,
-        error: err instanceof Error ? err.message : "Unknown error",
+        error: message,
+        resources: resolveCockpitResourceStates(s.resources, resourceErrors, new Date().toISOString()),
       }));
     }
-  }, []);
+  }, [auth.status]);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (!canAccessCockpitData(auth.status)) return;
+    const initialFetch = window.setTimeout(() => void fetchData(), 0);
+    return () => window.clearTimeout(initialFetch);
+  }, [auth.status, fetchData]);
 
   const updateProviderStatus = useCallback(async (id: string, status: string) => {
+    if (!canAccessCockpitData(auth.status)) throw new Error("Cockpit access is not authorized");
     const { error } = await supabase
       .from("model_providers")
       .update({ status })
       .eq("id", id);
     if (error) throw new Error(error.message);
     await fetchData();
-  }, [fetchData]);
+  }, [auth.status, fetchData]);
 
   const updateReviewStatus = useCallback(async (id: string, status: string) => {
+    if (!canAccessCockpitData(auth.status)) throw new Error("Cockpit access is not authorized");
     const { error } = await supabase
       .from("review_items")
       .update({ status })
       .eq("id", id);
     if (error) throw new Error(error.message);
     await fetchData();
-  }, [fetchData]);
+  }, [auth.status, fetchData]);
 
   const markNotificationRead = useCallback(async (id: string) => {
+    if (!canAccessCockpitData(auth.status)) throw new Error("Cockpit access is not authorized");
+    setState((s) => ({
+      ...s,
+      notifications: setNotificationReadValue(s.notifications, id, true),
+    }));
     const { error } = await supabase
       .from("notifications")
       .update({ read: true })
       .eq("id", id);
-    if (error) throw new Error(error.message);
-    await fetchData();
-  }, [fetchData]);
+    const settledAt = new Date().toISOString();
+    if (error) {
+      setState((s) => ({
+        ...s,
+        error: `notifications: ${error.message}`,
+        notifications: setNotificationReadValue(s.notifications, id, false),
+        resources: {
+          ...s.resources,
+          notifications: resolveResourceState(s.resources.notifications, error.message, settledAt),
+        },
+      }));
+      return;
+    }
+    setState((s) => ({
+      ...s,
+      resources: {
+        ...s.resources,
+        notifications: resolveResourceState(s.resources.notifications, null, settledAt),
+      },
+    }));
+  }, [auth.status]);
 
   const clearAllNotifications = useCallback(async () => {
+    if (!canAccessCockpitData(auth.status)) throw new Error("Cockpit access is not authorized");
     const { error } = await supabase
       .from("notifications")
       .delete()
       .neq("id", "00000000-0000-0000-0000-000000000000");
     if (error) throw new Error(error.message);
     await fetchData();
-  }, [fetchData]);
+  }, [auth.status, fetchData]);
 
   const addNotification = useCallback(async (n: Omit<Notification, "id" | "created_at">) => {
+    if (!canAccessCockpitData(auth.status)) throw new Error("Cockpit access is not authorized");
     const { error } = await supabase.from("notifications").insert(n);
     if (error) throw new Error(error.message);
     await fetchData();
-  }, [fetchData]);
+  }, [auth.status, fetchData]);
 
   return {
     ...state,

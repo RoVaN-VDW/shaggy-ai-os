@@ -43,8 +43,23 @@ next-env.d.ts
 # build output
 /dist
 
+# Python bytecode caches
+__pycache__/
+*.py[cod]
+
 # local mockups
 _mockups/
+
+# local Hermes plans, runtime snapshots, evidence, and desktop attachments
+/.hermes/
+
+# local backup and source-package artifacts
+*.bak
+/design-source/*.zip
+
+# local design explorations and benchmark spikes
+/sketches/
+/spikes/
 
 # supabase local temp
 supabase/.temp

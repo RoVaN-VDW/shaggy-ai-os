@@ -1,5 +1,36 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin, requireAuth } from "@/lib/supabase/server";
+import { rateLimit, validateOptionalUuid } from "@/lib/api/security";
+import { embedDocument } from "@/lib/knowledge/embed-document";
+
+export const maxDuration = 20;
+
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+const MAX_INDEXED_CHARACTERS = 3_000;
+const MAX_INDEXED_PDF_PAGES = 10;
+
+import * as pdfjs from "pdfjs-dist";
+
+async function extractTextFromPDF(bytes: ArrayBuffer, maxChars: number): Promise<string> {
+  try {
+    const data = new Uint8Array(bytes);
+    const loadingTask = pdfjs.getDocument({ data });
+    const pdf = await loadingTask.promise;
+    let text = "";
+    for (let i = 1; i <= Math.min(pdf.numPages, MAX_INDEXED_PDF_PAGES); i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      text += content.items
+        .map((item) => ("str" in item ? (item as { str?: string }).str || "" : ""))
+        .join(" ") + "\n";
+      if (text.length >= maxChars) break;
+    }
+    return text.slice(0, maxChars).trim();
+  } catch (e) {
+    console.error("PDF extraction failed", e);
+    return `[PDF: text extraction failed]`;
+  }
+}
 
 async function extractTextPreview(file: File, bytes: ArrayBuffer, maxChars: number): Promise<string> {
   const ext = file.name.split(".").pop()?.toLowerCase();
@@ -7,12 +38,15 @@ async function extractTextPreview(file: File, bytes: ArrayBuffer, maxChars: numb
     return new TextDecoder().decode(bytes).slice(0, maxChars);
   }
   if (ext === "pdf") {
-    return `[PDF: ${file.name}] — text extraction pending`;
+    return extractTextFromPDF(bytes, maxChars);
   }
   return `[${file.type || ext}] ${file.name}`;
 }
 
 export async function POST(req: NextRequest) {
+  const limited = rateLimit(req, "upload", 8);
+  if (limited) return limited;
+
   const auth = await requireAuth(req);
   if (auth.error) return auth.error;
 
@@ -23,6 +57,15 @@ export async function POST(req: NextRequest) {
 
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
+    }
+
+    if (file.size > MAX_UPLOAD_BYTES) {
+      return NextResponse.json({ error: "File is too large. Maximum size is 10MB." }, { status: 413 });
+    }
+
+    const projectError = validateOptionalUuid(projectId);
+    if (projectError) {
+      return NextResponse.json({ error: projectError }, { status: 400 });
     }
 
     const allowed = ["application/pdf", "text/plain", "text/markdown"];
@@ -49,29 +92,43 @@ export async function POST(req: NextRequest) {
       });
 
     if (uploadError) {
-      return NextResponse.json({ error: uploadError.message }, { status: 500 });
+      return NextResponse.json({ error: "Upload failed." }, { status: 500 });
     }
 
-    const contentPreview = await extractTextPreview(file, bytes, 3000);
+    const contentPreview = await extractTextPreview(file, bytes, MAX_INDEXED_CHARACTERS);
 
-    const { error: dbError } = await supabaseAdmin.from("knowledge_docs").insert({
-      name: file.name,
-      file_type: file.type || ext || "unknown",
-      size_bytes: file.size,
-      storage_path: path,
-      embedding_status: "pending",
-      project_id: projectId || null,
-      content_preview: contentPreview,
-      content_text: contentPreview,
-    });
+    const { data: inserted, error: dbError } = await supabaseAdmin
+      .from("knowledge_docs")
+      .insert({
+        name: file.name,
+        file_type: file.type || ext || "unknown",
+        size_bytes: file.size,
+        storage_path: path,
+        embedding_status: "pending",
+        project_id: projectId || null,
+        content_preview: contentPreview,
+        content_text: contentPreview,
+      })
+      .select("id, name, file_type, size_bytes, storage_path, embedding_status, created_at")
+      .single();
 
     if (dbError) {
       await supabaseAdmin.storage.from("knowledge").remove([path]);
-      return NextResponse.json({ error: dbError.message }, { status: 500 });
+      return NextResponse.json({ error: "Upload metadata could not be saved." }, { status: 500 });
     }
 
-    return NextResponse.json({ ok: true, path, name: file.name });
-  } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : "Upload failed" }, { status: 500 });
+    if (inserted?.id) {
+      after(async () => {
+        try {
+          await embedDocument(inserted.id);
+        } catch {
+          console.error("Background embedding failed");
+        }
+      });
+    }
+
+    return NextResponse.json({ ok: true, document: inserted });
+  } catch {
+    return NextResponse.json({ error: "Upload failed." }, { status: 500 });
   }
 }

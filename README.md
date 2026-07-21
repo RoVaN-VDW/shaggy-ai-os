@@ -1,36 +1,63 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# SHAGGY AI OS
 
-## Getting Started
+Private personal AI operating-system cockpit built with Next.js 16, React 19, TypeScript, Supabase and pnpm.
 
-First, run the development server:
+SHAGGY combines an authenticated command center with project, knowledge, chat, review, Digital Twin, voice/realtime and Models & Costs modules. Dashboard claims follow explicit source, freshness and capability-truth boundaries.
+
+## Local setup
+
+Requirements:
+
+- Node.js 22 (`.nvmrc`)
+- pnpm 11.10.0
+- project environment variables supplied locally; never commit `.env*`
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+nvm use
+pnpm install --frozen-lockfile
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Next.js uses port 3000 by default. To run the production build on the local SHAGGY port:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+pnpm build
+pnpm exec next start -p 3001
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Verification
 
-## Learn More
+Run the complete local release gate:
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+pnpm verify
+pnpm audit --prod
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+`pnpm verify` checks:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- canonical Golden Frame integrity;
+- Node contract tests;
+- auth, knowledge-delete and embedding-lifecycle security contracts;
+- ESLint;
+- TypeScript;
+- the Next.js production build.
 
-## Deploy on Vercel
+## Supporting commands
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+pnpm snapshot:second-brain
+pnpm voice:companion
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The voice companion is loopback-only. Realtime voice is conditional, paid-cloud, push-to-talk and non-autonomous.
+
+## Safety and release boundaries
+
+- Authentication and Supabase RLS stay fail-closed.
+- Provider credentials remain server-side and outside Git.
+- `.hermes/` contains private local plans/evidence/runtime data and is ignored.
+- Commit, Preview deployment and production promotion each require a separate owner decision.
+- Knowledge Constellation P1 and Living Twin P2 remain separately gated.
+
+See `docs/NEXT_ACTIONS.md`, `docs/KNOWLEDGE_TWIN_MASTERPLAN.md` and `docs/RELEASE_CHECKPOINT_2026-07-19.md` for the current handoff.

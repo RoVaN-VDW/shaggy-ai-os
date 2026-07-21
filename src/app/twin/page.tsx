@@ -1,72 +1,71 @@
 "use client";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Activity, Archive, Clock3, GitBranch, ListChecks, Network, ShieldCheck, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Network, Activity, Server, Cpu, Database, Shield } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useSecondBrainSnapshot } from "@/hooks/useSecondBrainSnapshot";
 
-const modules = [
-  { name: "Cockpit", status: "active", icon: Activity },
-  { name: "Projects", status: "active", icon: Server },
-  { name: "Chat", status: "active", icon: Cpu },
-  { name: "Knowledge", status: "standby", icon: Database },
-  { name: "Review", status: "active", icon: Shield },
+const NODE_POSITIONS = [
+  "left-[8%] top-[12%]", "right-[8%] top-[12%]", "right-[5%] top-[46%]", "right-[18%] bottom-[7%]",
+  "left-[18%] bottom-[7%]", "left-[5%] top-[46%]", "left-[38%] top-[7%]", "right-[38%] bottom-[5%]",
 ];
 
 export default function TwinPage() {
+  const { status, snapshot, error, truth } = useSecondBrainSnapshot();
+  if (!snapshot) {
+    return <div className="grid h-full place-items-center"><div className="max-w-md rounded-3xl border border-primary/15 bg-card/75 p-8 text-center backdrop-blur"><Network className="mx-auto size-8 text-primary" /><h1 className="mt-4 text-xl font-semibold">Digital Twin · Second Brain</h1><p className="mt-3 text-sm text-muted-foreground" role={status === "error" ? "alert" : "status"}>{status === "loading" ? "Reading the private aggregate snapshot…" : error ?? "Snapshot unavailable."}</p>{status !== "loading" && <p className="mt-3 text-xs text-muted-foreground">Local-only source · no private workspace snapshot is bundled with deployments.</p>}</div></div>;
+  }
+
+  const continuity = snapshot.continuityFilesExpected
+    ? Math.round((snapshot.continuityFilesPresent / snapshot.continuityFilesExpected) * 100)
+    : 0;
+  const recentProjects = [...new Set(snapshot.recentChanges.map((change) => change.project))].slice(0, NODE_POSITIONS.length);
+  const metrics = [
+    { label: "Indexed projects", value: snapshot.indexedProjects, icon: GitBranch },
+    { label: "Continuity files", value: `${snapshot.continuityFilesPresent}/${snapshot.continuityFilesExpected}`, icon: ShieldCheck },
+    { label: "Open actions", value: snapshot.openActions ?? "—", icon: ListChecks },
+    { label: "Unresolved decisions", value: snapshot.unresolvedDecisions ?? "—", icon: TriangleAlert },
+    { label: "Stale projects", value: snapshot.staleProjects, icon: Clock3 },
+    { label: "Backup state", value: snapshot.backupState, icon: Archive },
+  ];
+
   return (
-    <div className="h-full flex flex-col gap-4">
-      <div className="flex items-center gap-2">
-        <Network className="w-5 h-5 text-[#00d4ff]" />
-        <h1 className="text-xl font-bold text-[#f1f5f9]">Digital Twin</h1>
-      </div>
-      <div className="grid grid-cols-12 gap-4 flex-1">
-        <Card className="col-span-8 border-[#1e293b] bg-[#111c21]/80 backdrop-blur flex flex-col">
-          <CardHeader className="pb-2"><CardTitle className="text-sm text-[#94a3b8]">System Architecture</CardTitle></CardHeader>
-          <CardContent className="flex-1 flex items-center justify-center">
-            <div className="relative w-full h-full max-w-2xl">
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-32 h-32 rounded-full border-2 border-[#00d4ff]/30 flex items-center justify-center bg-[#03080b]/80">
-                  <span className="text-[#00d4ff] font-bold text-xs">SHAGGY</span>
-                </div>
-              </div>
-              {modules.map((m, i) => {
-                const angle = (i * 360) / modules.length;
-                const radius = 35;
-                return (
-                  <div
-                    key={m.name}
-                    className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center"
-                    style={{ transform: `translate(-50%, -50%) rotate(${angle}deg) translateX(${radius}%) rotate(-${angle}deg)` }}
-                  >
-                    <div className="w-12 h-12 rounded-xl border border-[#1e293b] bg-[#03080b] flex items-center justify-center mb-1">
-                      <m.icon className={`w-5 h-5 ${m.status === 'active' ? 'text-[#00d4ff]' : 'text-[#f0b429]'}`} />
-                    </div>
-                    <span className="text-[10px] text-[#f1f5f9]">{m.name}</span>
-                    <Badge className={`text-[8px] mt-0.5 ${m.status === 'active' ? 'bg-[#22c55e]/10 text-[#22c55e]' : 'bg-[#f0b429]/10 text-[#f0b429]'}`}>{m.status}</Badge>
-                  </div>
-                );
-              })}
-            </div>
+    <div className="flex h-full min-h-0 flex-col gap-4 overflow-auto pr-1">
+      <header className="flex items-center justify-between gap-4">
+        <div><div className="flex items-center gap-2"><Network className="size-5 text-primary" /><h1 className="text-xl font-bold">Digital Twin · Second Brain</h1></div><p className="mt-1 text-xs text-muted-foreground">Model-independent continuity telemetry from the local AI Workspace.</p></div>
+        <Badge
+          variant="outline"
+          className={truth.status === "fresh" ? "border-emerald-400/25 text-emerald-300" : truth.status === "stale" ? "border-amber-300/25 text-amber-300" : "border-destructive/25 text-destructive"}
+          title={`${truth.source} · observed ${snapshot.observedAt}`}
+        >
+          Private aggregate · {truth.status}
+        </Badge>
+      </header>
+
+      <section className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6" aria-label="Second Brain readouts">
+        {metrics.map((metric) => <Card key={metric.label} className="border-border bg-card/75 backdrop-blur"><CardContent className="flex items-center gap-3 p-4"><metric.icon className="size-4 shrink-0 text-primary" /><div className="min-w-0"><p className="truncate text-[10px] uppercase tracking-[.12em] text-muted-foreground">{metric.label}</p><p className="mt-1 truncate text-lg font-semibold capitalize text-foreground">{metric.value}</p></div></CardContent></Card>)}
+      </section>
+
+      <div className="grid min-h-[520px] flex-1 grid-cols-1 gap-4 xl:grid-cols-12">
+        <Card className="relative min-h-[520px] overflow-hidden border-border bg-card/70 backdrop-blur xl:col-span-8">
+          <CardHeader><CardTitle className="flex items-center gap-2 text-sm text-muted-foreground"><GitBranch className="size-4 text-primary" /> Project constellation</CardTitle></CardHeader>
+          <CardContent className="absolute inset-x-0 bottom-0 top-14">
+            <svg className="absolute inset-0 size-full text-primary/25" aria-hidden="true"><circle cx="50%" cy="50%" r="34%" fill="none" stroke="currentColor" strokeDasharray="3 8" />{recentProjects.map((_, index) => { const angle = ((Math.PI * 2) / Math.max(recentProjects.length, 1)) * index - Math.PI / 2; return <line key={index} x1="50%" y1="50%" x2={`${50 + Math.cos(angle) * 34}%`} y2={`${50 + Math.sin(angle) * 34}%`} stroke="currentColor" />; })}</svg>
+            <div className="absolute left-1/2 top-1/2 z-10 grid size-40 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-primary/30 bg-background/90 shadow-[0_0_90px_rgba(0,212,255,.2)]"><div className="text-center"><span className="text-3xl font-semibold text-primary">{continuity}%</span><p className="mt-1 text-[9px] uppercase tracking-[.18em] text-muted-foreground">continuity</p></div></div>
+            {recentProjects.map((project, index) => <div key={project} className={`absolute ${NODE_POSITIONS[index]} w-32 rounded-2xl border border-primary/15 bg-background/85 p-3 text-center shadow-xl backdrop-blur`}><span className="mx-auto block size-2 rounded-full bg-primary shadow-[0_0_12px_currentColor]" /><p className="mt-2 truncate text-xs font-medium" title={project}>{project}</p><p className="mt-1 text-[9px] uppercase tracking-wider text-muted-foreground">recently changed</p></div>)}
+            {!recentProjects.length && <div className="absolute inset-0 grid place-items-center text-sm text-muted-foreground">No durable changes in this snapshot.</div>}
           </CardContent>
         </Card>
-        <Card className="col-span-4 border-[#1e293b] bg-[#111c21]/80 backdrop-blur">
-          <CardHeader className="pb-2"><CardTitle className="text-sm text-[#94a3b8]">Live Telemetry</CardTitle></CardHeader>
-          <CardContent className="space-y-2">
-            {[
-              { label: "CPU Load", value: "12%" },
-              { label: "Memory", value: "4.2 GB" },
-              { label: "Active Providers", value: "5" },
-              { label: "Pending Reviews", value: "0" },
-              { label: "Uptime", value: "99.9%" },
-            ].map((s) => (
-              <div key={s.label} className="flex justify-between p-2 rounded bg-[#03080b] border border-[#1e293b]">
-                <span className="text-xs text-[#94a3b8]">{s.label}</span>
-                <span className="text-xs font-medium text-[#f1f5f9]">{s.value}</span>
-              </div>
-            ))}
-          </CardContent>
+
+        <Card className="border-border bg-card/75 backdrop-blur xl:col-span-4">
+          <CardHeader><CardTitle className="flex items-center gap-2 text-sm text-muted-foreground"><Activity className="size-4 text-primary" /> Durable change trace</CardTitle></CardHeader>
+          <CardContent><ol className="space-y-2">{snapshot.recentChanges.length ? snapshot.recentChanges.map((change, index) => <li key={`${change.project}-${change.at}-${index}`} className="flex gap-3 rounded-xl border border-border bg-background/40 p-3"><span className="mt-1 size-2 shrink-0 rounded-full bg-primary shadow-[0_0_9px_currentColor]" /><div className="min-w-0"><p className="truncate text-xs font-medium">{change.project}</p><p className="mt-1 text-[10px] uppercase tracking-wider text-muted-foreground">{change.kind} · {new Date(change.at).toLocaleString()}</p></div></li>) : <li className="rounded-xl border border-dashed border-border p-5 text-center text-xs text-muted-foreground">No recent durable changes.</li>}</ol></CardContent>
         </Card>
       </div>
+
+      <p className="pb-2 text-[10px] text-muted-foreground">
+        Source {truth.source} · Observed {new Date(snapshot.observedAt).toLocaleString()} · Age {truth.ageMs === null ? "unavailable" : `${Math.round(truth.ageMs / 1000)}s`} · Aggregate metadata only; document bodies, chats and credentials never enter this snapshot.
+      </p>
     </div>
   );
 }

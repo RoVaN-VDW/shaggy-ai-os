@@ -57,10 +57,8 @@ export function QuickActionsDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger>
-        <Button className="w-full bg-[#00d4ff]/10 text-[#00d4ff] hover:bg-[#00d4ff]/20 border border-[#00d4ff]/30">
-          <Rocket className="w-4 h-4 mr-2" /> New dispatch
-        </Button>
+      <DialogTrigger className="w-full inline-flex items-center justify-center gap-2 rounded-md bg-[#00d4ff]/10 text-[#00d4ff] hover:bg-[#00d4ff]/20 border border-[#00d4ff]/30 px-4 py-2 text-sm font-medium transition-colors">
+        <Rocket className="w-4 h-4" /> New dispatch
       </DialogTrigger>
       <DialogContent className="bg-[#0c111e] border-[#1e293b] text-[#f1f5f9] max-w-2xl">
         <DialogHeader>
@@ -92,7 +90,7 @@ export function QuickActionsDialog({
             <Label className="text-xs text-[#94a3b8]">Prompt</Label>
             <Textarea
               value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setPrompt(e.target.value)}
               placeholder="Describe the task you want the model to execute..."
               className="bg-[#03080b] border-[#1e293b] text-[#f1f5f9] min-h-[120px]"
             />

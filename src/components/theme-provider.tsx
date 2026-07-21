@@ -16,14 +16,15 @@ const ThemeContext = createContext<ThemeContextValue>({
   toggleTheme: () => {},
 });
 
-function getInitialTheme(): Theme {
-  if (typeof window === "undefined") return "dark";
-  const stored = localStorage.getItem("shaggy-theme") as Theme | null;
-  return stored || "dark";
-}
-
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>(getInitialTheme);
+  const [theme, setThemeState] = useState<Theme>("dark");
+
+  useEffect(() => {
+    const stored = localStorage.getItem("shaggy-theme");
+    if (stored !== "dark" && stored !== "light") return;
+    const restoreTheme = window.setTimeout(() => setThemeState(stored), 0);
+    return () => window.clearTimeout(restoreTheme);
+  }, []);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);

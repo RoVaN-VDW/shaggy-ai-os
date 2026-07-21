@@ -1,160 +1,100 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { ChangeEvent, useRef, useState } from "react";
+import { FileText, Loader2, Trash2, Upload } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { FileText, Upload, Loader2, Trash2 } from "lucide-react";
-import { supabase } from "@/lib/supabase/client";
+import { fetchWithAuth } from "@/lib/supabase/client";
 
-const STATUS_STYLES: Record<string, string> = {
-  pending: "bg-[#f0b429]/10 text-[#f0b429] border-[#f0b429]/30",
-  processing: "bg-[#00d4ff]/10 text-[#00d4ff] border-[#00d4ff]/30",
-  indexed: "bg-[#22c55e]/10 text-[#22c55e] border-[#22c55e]/30",
-  error: "bg-[#ef4444]/10 text-[#ef4444] border-[#ef4444]/30",
+type KnowledgeDoc = {
+  id: string;
+  name: string;
+  file_type: string;
+  size_bytes: number;
+  embedding_status: string;
+  created_at: string;
+  storage_path?: string;
 };
 
-export function KnowledgeUpload({ docs }: { docs: { id: string; name: string; file_type: string; size_bytes: number; embedding_status: string; created_at: string; storage_path?: string }[] }) {
+const STATUS_STYLES: Record<string, string> = {
+  pending: "bg-amber-400/10 text-amber-300 border-amber-400/30",
+  processing: "bg-primary/10 text-primary border-primary/30",
+  indexed: "bg-emerald-400/10 text-emerald-400 border-emerald-400/30",
+  error: "bg-destructive/10 text-destructive border-destructive/30",
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  indexed: "preview indexed",
+};
+
+export function KnowledgeUpload({ docs }: { docs: KnowledgeDoc[] }) {
+  const [documents, setDocuments] = useState(docs);
   const [uploading, setUploading] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
+  const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  async function handleUpload(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
     if (!file) return;
-
     setUploading(true);
-    setProgress(10);
-
+    setError(null);
+    setProgress(20);
     const formData = new FormData();
     formData.append("file", file);
 
     try {
-      setProgress(40);
-      const res = await fetch("/api/upload", { method: "POST", body: formData });
-      setProgress(80);
-      const data = await res.json();
+      setProgress(45);
+      const response = await fetchWithAuth("/api/upload", { method: "POST", body: formData });
+      setProgress(85);
+      const data = await response.json();
+      if (!response.ok || !data.document) throw new Error(data.error || "Upload failed.");
+      setDocuments((current) => [data.document, ...current]);
       setProgress(100);
-
-      if (!res.ok) {
-        alert(`Upload failed: ${data.error || "Unknown error"}`);
-      } else {
-        window.location.reload();
-      }
-    } catch (err) {
-      alert(`Upload failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Upload failed.");
     } finally {
       setUploading(false);
-      setProgress(0);
+      window.setTimeout(() => setProgress(0), 400);
       if (inputRef.current) inputRef.current.value = "";
     }
-  };
+  }
 
-  const handleDelete = async (doc: { id: string; storage_path?: string }) => {
-    if (doc.storage_path) {
-      await supabase.storage.from("knowledge").remove([doc.storage_path]);
+  async function handleDelete(doc: KnowledgeDoc) {
+    if (!window.confirm(`Remove “${doc.name}” from SHAGGY knowledge? This cannot be undone.`)) return;
+    setDeleting(doc.id);
+    setError(null);
+    try {
+      const response = await fetchWithAuth(`/api/knowledge/${doc.id}`, { method: "DELETE" });
+      const data = (await response.json()) as { error?: string; warning?: string };
+      if (!response.ok) throw new Error(data.error || "Document could not be removed.");
+      setDocuments((current) => current.filter((item) => item.id !== doc.id));
+      if (data.warning) setError(data.warning);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Document could not be removed.");
+    } finally {
+      setDeleting(null);
     }
-    await supabase.from("knowledge_docs").delete().eq("id", doc.id);
-    window.location.reload();
-  };
-
-  const formatSize = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
+  }
 
   return (
-    <div className="h-full grid grid-cols-12 gap-4">
-      <div className="col-span-8">
-        <Card className="h-full border-[#1e293b] bg-[#111c21]/80 backdrop-blur">
-          <CardHeader className="pb-2 flex-row items-center justify-between">
-            <CardTitle className="text-sm text-[#94a3b8] flex items-center gap-2">
-              <FileText className="w-4 h-4 text-[#00d4ff]" /> Knowledge Documents
-            </CardTitle>
-            <Badge className="bg-[#00d4ff]/10 text-[#00d4ff] border border-[#00d4ff]/30">{docs.length} docs</Badge>
-          </CardHeader>
-          <CardContent className="p-0">
-            <ScrollArea className="h-[calc(100vh-20rem)] px-4">
-              <div className="space-y-2 pb-4">
-                {docs.length === 0 && (
-                  <p className="text-xs text-[#94a3b8]">No documents uploaded yet.</p>
-                )}
-                {docs.map((d) => (
-                  <div key={d.id} className="p-3 rounded-lg bg-[#03080b] border border-[#1e293b] flex items-center justify-between">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="p-2 rounded-lg bg-[#00d4ff]/10">
-                        <FileText className="w-4 h-4 text-[#00d4ff]" />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-sm font-medium text-[#f1f5f9] truncate">{d.name}</div>
-                        <div className="text-[10px] text-[#94a3b8]">
-                          {formatSize(d.size_bytes)} · {new Date(d.created_at).toLocaleDateString()}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge className={STATUS_STYLES[d.embedding_status] || STATUS_STYLES.pending}>{d.embedding_status}</Badge>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 text-[#ef4444] hover:bg-[#ef4444]/10"
-                        onClick={() => handleDelete(d)}
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </ScrollArea>
-          </CardContent>
-        </Card>
-      </div>
+    <div className="grid h-full grid-cols-12 gap-4">
+      <Card className="col-span-8 h-full border-border bg-card/75 backdrop-blur">
+        <CardHeader className="flex-row items-center justify-between pb-2"><CardTitle className="flex items-center gap-2 text-sm text-muted-foreground"><FileText className="size-4 text-primary" />Knowledge documents</CardTitle><Badge className="border border-primary/30 bg-primary/10 text-primary">{documents.length} docs</Badge></CardHeader>
+        <CardContent className="p-0"><ScrollArea className="h-[calc(100vh-20rem)] px-4"><div className="space-y-2 pb-4">{documents.length === 0 && <div className="rounded-xl border border-dashed border-border py-12 text-center"><FileText className="mx-auto mb-3 size-7 text-primary/40" /><p className="text-xs text-muted-foreground">No documents uploaded yet.</p></div>}{documents.map((doc) => <div key={doc.id} className="flex items-center justify-between rounded-xl border border-border bg-background/45 p-3"><div className="flex min-w-0 items-center gap-3"><div className="rounded-lg bg-primary/10 p-2"><FileText className="size-4 text-primary" /></div><div className="min-w-0"><div className="truncate text-sm font-medium text-foreground">{doc.name}</div><div className="text-[10px] text-muted-foreground">{formatSize(doc.size_bytes)} · {new Date(doc.created_at).toLocaleDateString()}</div></div></div><div className="flex items-center gap-2"><Badge className={STATUS_STYLES[doc.embedding_status] || STATUS_STYLES.pending}>{STATUS_LABELS[doc.embedding_status] || doc.embedding_status}</Badge><Button variant="ghost" size="sm" className="h-7 text-destructive hover:bg-destructive/10" onClick={() => void handleDelete(doc)} disabled={deleting === doc.id}>{deleting === doc.id ? <Loader2 className="size-3 animate-spin" /> : <Trash2 className="size-3" />}<span className="sr-only">Remove {doc.name}</span></Button></div></div>)}</div></ScrollArea></CardContent>
+      </Card>
 
-      <div className="col-span-4">
-        <Card className="border-[#1e293b] bg-[#111c21]/80 backdrop-blur p-4">
-          <div className="space-y-4">
-            <div className="p-4 rounded-xl border border-dashed border-[#1e293b] bg-[#03080b] text-center">
-              <Upload className="w-8 h-8 text-[#00d4ff] mx-auto mb-2" />
-              <p className="text-sm font-medium text-[#f1f5f9]">Upload document</p>
-              <p className="text-[10px] text-[#94a3b8] mt-1">PDF, TXT, Markdown supported</p>
-            </div>
-
-            <input
-              ref={inputRef}
-              type="file"
-              accept=".pdf,.txt,.md,.markdown"
-              className="hidden"
-              onChange={handleUpload}
-            />
-
-            <Button
-              className="w-full bg-[#00d4ff] text-[#0a0f1e] hover:bg-[#00d4ff]/90"
-              onClick={() => inputRef.current?.click()}
-              disabled={uploading}
-            >
-              {uploading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Upload className="w-4 h-4 mr-2" />}
-              Select file
-            </Button>
-
-            {uploading && (
-              <div className="space-y-1">
-                <div className="text-[10px] text-[#94a3b8] text-center">Uploading...</div>
-                <Progress value={progress} className="h-1" />
-              </div>
-            )}
-
-            <div className="text-[10px] text-[#64748b] space-y-1">
-              <p>• Documents are stored in Supabase Storage</p>
-              <p>• Embeddings are queued for RAG</p>
-              <p>• Status updates to &quot;indexed&quot; when ready</p>
-            </div>
-          </div>
-        </Card>
-      </div>
+      <Card className="col-span-4 h-fit border-border bg-card/75 p-4 backdrop-blur"><div className="space-y-4"><button type="button" className="w-full rounded-xl border border-dashed border-border bg-background/40 p-5 text-center transition-colors hover:border-primary/40" onClick={() => inputRef.current?.click()} disabled={uploading}><Upload className="mx-auto mb-2 size-8 text-primary" /><p className="text-sm font-medium text-foreground">Upload document</p><p className="mt-1 text-[10px] text-muted-foreground">PDF, TXT or Markdown · maximum 10 MB</p></button><input ref={inputRef} type="file" accept=".pdf,.txt,.md,.markdown" className="hidden" onChange={handleUpload} /><Button className="w-full" onClick={() => inputRef.current?.click()} disabled={uploading}>{uploading ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}{uploading ? "Uploading…" : "Select file"}</Button>{progress > 0 && <div className="space-y-1"><div className="text-center text-[10px] text-muted-foreground">{progress < 100 ? "Uploading and registering…" : "Upload complete"}</div><Progress value={progress} className="h-1" /></div>}{error && <p role="alert" className="rounded-lg border border-destructive/20 bg-destructive/10 p-2 text-xs text-destructive">{error}</p>}<div className="space-y-1 text-[10px] leading-4 text-muted-foreground"><p>• Stored in the private Supabase bucket</p><p>• Preview indexing covers up to 3,000 characters and the first 10 PDF pages</p><p>• Preview-indexed content becomes available to Chat RAG</p></div></div></Card>
     </div>
   );
+}
+
+function formatSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

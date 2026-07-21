@@ -1,44 +1,59 @@
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { UploadCloud, Shield, File } from "lucide-react";
+import { KnowledgeUpload } from "@/components/knowledge/knowledge-upload";
+import { useCockpitData } from "@/hooks/useCockpitData";
+import { FileCheck2, Shield, UploadCloud } from "lucide-react";
 
 export default function UploadsPage() {
+  const { knowledgeDocs, loading, error } = useCockpitData();
+  const indexed = knowledgeDocs.filter((doc) => doc.embedding_status === "indexed").length;
+
   return (
     <div className="h-full flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <UploadCloud className="w-5 h-5 text-[#00d4ff]" />
-          <h1 className="text-xl font-bold text-[#f1f5f9]">Upload Hub</h1>
+          <UploadCloud className="size-5 text-primary" />
+          <h1 className="text-xl font-bold text-foreground">Upload Hub</h1>
         </div>
-        <Button className="bg-[#00d4ff] text-[#020617] hover:bg-[#00d4ff]/90">
-          <UploadCloud className="w-4 h-4 mr-1" /> Upload File
-        </Button>
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <FileCheck2 className="size-4 text-emerald-400" /> {indexed} indexed · {knowledgeDocs.length} total
+        </div>
       </div>
-      <div className="grid grid-cols-3 gap-4">
-        <Card className="col-span-2 border-[#1e293b] bg-[#0a0f1e] min-h-[400px] flex items-center justify-center border-dashed border-2">
-          <div className="text-center">
-            <UploadCloud className="w-10 h-10 text-[#00d4ff] mx-auto mb-3" />
-            <p className="text-sm text-[#94a3b8]">Drop files here or click to upload</p>
-            <p className="text-xs text-[#64748b] mt-1">All files are scanned and labeled for sensitivity</p>
-          </div>
-        </Card>
-        <Card className="border-[#1e293b] bg-[#0a0f1e]">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-[#94a3b8] flex items-center gap-2">
-              <Shield className="w-4 h-4 text-[#22c55e]" /> Sensitivity Policy
+
+      {error && <div role="alert" className="rounded-xl border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive">{error}</div>}
+
+      <div className="grid flex-1 min-h-0 grid-cols-12 gap-4">
+        <div className="col-span-8 min-h-0">
+          <KnowledgeUpload docs={knowledgeDocs} />
+        </div>
+        <Card className="col-span-4 border-border bg-card/80 backdrop-blur">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Shield className="size-4 text-emerald-400" /> Ingestion policy
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2">
-            {["Public / Low Risk", "Internal / Medium Risk", "Confidential / High Risk", "Secret / Critical"].map((label) => (
-              <div key={label} className="flex items-center gap-2 text-xs text-[#f1f5f9]">
-                <File className="w-3 h-3 text-[#94a3b8]" /> {label}
-              </div>
-            ))}
+          <CardContent className="space-y-4 text-xs text-muted-foreground">
+            <Policy label="Accepted" value="PDF, Markdown, plain text" />
+            <Policy label="Maximum size" value="10 MB per document" />
+            <Policy label="Storage" value="Private Supabase bucket" />
+            <Policy label="Indexing" value="OpenAI text-embedding-3-small" />
+            <div className="rounded-xl border border-primary/15 bg-primary/[0.05] p-3 leading-5">
+              Files are stored first and then indexed for project-aware RAG. Failed metadata writes automatically roll back the storage upload.
+            </div>
+            {loading && <p className="animate-pulse">Refreshing document state…</p>}
           </CardContent>
         </Card>
       </div>
+    </div>
+  );
+}
+
+function Policy({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-start justify-between gap-4 border-b border-border/70 pb-3">
+      <span>{label}</span>
+      <span className="text-right font-medium text-foreground">{value}</span>
     </div>
   );
 }

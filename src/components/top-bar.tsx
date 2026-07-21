@@ -2,8 +2,9 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Shield, User, Sun, Moon } from "lucide-react";
+import { Shield, LogOut, Sun, Moon } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
+import { supabase } from "@/lib/supabase/client";
 
 export function TopBar() {
   const { theme, toggleTheme } = useTheme();
@@ -28,8 +29,14 @@ export function TopBar() {
         >
           {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
         </Button>
-        <Button variant="ghost" size="icon" className="w-8 h-8 rounded-full border border-border">
-          <User className="w-4 h-4" />
+        <Button
+          variant="ghost"
+          size="icon"
+          className="w-8 h-8 rounded-full border border-border"
+          onClick={() => void supabase.auth.signOut()}
+          title="Sign out"
+        >
+          <LogOut className="w-4 h-4" />
         </Button>
       </div>
     </header>
