@@ -14,9 +14,12 @@
 - [x] Record Ronald's dual-mode presence decision: performance-gated 4K Orb first, cinematic Ronald face second.
 - [ ] Benchmark local Dutch STT/TTS plus microphone security only after explicit approval; no model install or cloud audio upload before that gate.
 - [x] Implement the validated Knowledge/Twin masterplan P0 truth/capability slice with RED→GREEN contracts.
-- [ ] Implement P1 and P2 as separate owner-approved slices; neither phase is authorized by the P0 completion.
+- [x] Implement and merge the separately approved P1 local provider readplane.
+- [x] Implement and locally accept the separately approved P2 Activity Readplane; later review/Git/release actions remain separately gated.
+- [x] Obtain Ronald's explicit model approval and complete one independent read-only fail-closed Fable Low P2 review; reconcile every material finding against source and runtime evidence.
+- [x] Close microsecond ordering/calendar/event-boundary gaps plus wide-layout four-row clipping with RED→GREEN contracts; re-pass 232/232 tests and authenticated production QA.
 - [x] Perform final scoped review and create four separately approved local code commits after clean cumulative worktree verification.
-- [ ] Obtain follow-up independent review and GitHub CI before remote push or Preview promotion.
+- [x] Obtain follow-up independent review and green GitHub CI for merged P1.
 - [ ] Apply Preview migrations, deploy Preview and promote production only through separate owner approval gates.
 
 > The original v0.1 plan below is retained as historical context.

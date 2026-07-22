@@ -5,3 +5,4 @@ virtualStoreDir: ${HOME}/.cache/pnpm-virtual-stores/shaggy-ai-os
 packageImportMethod: copy
 overrides:
   postcss: ^8.5.10
+  sharp: 0.35.3

@@ -112,7 +112,10 @@
 .dream-viewport__canvas[data-layout="wide"] .dream-briefing .dream-list-item { padding: 10px 8px; }
 .dream-viewport__canvas[data-layout="wide"] .dream-activity { top: 328px; height: 159px; }
 .dream-viewport__canvas[data-layout="wide"] .dream-activity .dream-activity-trace { margin: 4px 16px; }
-.dream-viewport__canvas[data-layout="wide"] .dream-activity .dream-activity-trace__item { min-height: 32px; }
+.dream-viewport__canvas[data-layout="wide"] .dream-activity .dream-activity-trace__item { min-height: 25px; }
+.dream-viewport__canvas[data-layout="wide"] .dream-activity-trace__item b,
+.dream-viewport__canvas[data-layout="wide"] .dream-activity-trace__item small { line-height: 12px; }
+.dream-viewport__canvas[data-layout="wide"] .dream-activity-trace__item small { margin-top: 0; }
 .dream-viewport__canvas[data-layout="wide"] .dream-dock {
   left: 0;
   width: 100%;

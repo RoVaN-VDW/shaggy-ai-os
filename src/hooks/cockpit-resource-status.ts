@@ -6,7 +6,7 @@ export const COCKPIT_RESOURCE_SOURCES = {
   dailyUsage: "supabase:get_daily_usage",
   notifications: "supabase:notifications",
   knowledgeDocs: "supabase:knowledge_docs",
-  agentActivity: "supabase:agent_activity",
+  agentActivity: "local-api:activity",
 } as const;
 
 export type CockpitResourceKey = keyof typeof COCKPIT_RESOURCE_SOURCES;

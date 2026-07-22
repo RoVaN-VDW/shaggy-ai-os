@@ -47,8 +47,8 @@ export const CAPABILITY_REGISTRY = {
   cockpit: {
     key: "cockpit",
     label: "Cockpit data",
-    // P1 provider readplane is tracked per resource; this broad source remains
-    // legacy until the remaining cockpit resources migrate away from Supabase.
+    // P1 provider readplane is tracked per resource; P2 activity readplane is too.
+    // This broad source remains legacy until the remaining resources leave Supabase.
     source: "supabase:cockpit-resources",
     ttlMs: 60_000,
     claim: "authorized source-backed data",

@@ -8,10 +8,13 @@
 - [x] Complete the Knowledge/Twin P0 truth-and-capability slice: timestamp-derived Twin freshness, local-only Settings boundaries, decision-only Review Queue and uniform planned navigation states.
 - [x] Keep private `.hermes/` runtime/evidence data, backup files and the archived design-source package outside product commits.
 - [x] Reconcile the 182-file worktree in a clean temporary worktree and create four separately approved local code commits on `stabilization/release-checkpoint-2026-07-19`.
-- [ ] Obtain a follow-up independent reviewer verdict and add GitHub CI before any remote push or Preview promotion.
+- [x] Obtain a follow-up independent reviewer verdict and add GitHub CI before any remote push or Preview promotion.
 - [ ] Apply the pending Supabase migrations to the intended Preview database only after separate owner approval and verify bucket privacy, RLS, RAG scope and usage provenance.
 - [ ] Deploy Preview only after separate approval, then run authenticated desktop/mobile browser QA. Production remains untouched.
-- [ ] Continue Knowledge Constellation P1 only after the stabilization checkpoint is accepted; P2 remains separately gated.
+- [x] Complete and merge P1 local provider readplane with independent release acceptance and green main CI.
+- [x] Implement and locally accept P2 Activity Readplane; commit, push, PR, merge and deployment remain separate gates.
+- [x] Run one independent read-only fail-closed P2 review after Ronald explicitly approved Fable Low; reconcile the microsecond-ordering blocker TDD-first and reject unsupported clock-skew/window findings.
+- [x] Re-run 232/232 tests, security, lint, typecheck, production build, production audit and authenticated runtime QA; `/api/activity` returns 50 local SQLite events and all four wide-layout rows render without clipping.
 
 ## Current Dream v3 handoff (2026-07-16)
 
