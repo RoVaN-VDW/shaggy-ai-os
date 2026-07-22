@@ -10,12 +10,13 @@ import {
   setNotificationReadValue,
 } from "../../src/hooks/cockpit-resource-status.ts";
 
-test("cockpit resources identify local projects and providers while unmigrated sources remain Supabase legacy", () => {
+test("cockpit resources identify local projects, providers and activity while unmigrated sources remain Supabase legacy", () => {
   const resources = createInitialResourceStates();
 
   assert.equal(resources.projects.status, "loading");
   assert.equal(resources.projects.source, "local-api:projects");
   assert.equal(resources.providers.source, "local-api:providers");
+  assert.equal(resources.agentActivity.source, "local-api:activity");
   assert.equal(resources.usage.source, "supabase:usage_events");
   assert.equal(resources.dailyUsage.source, "supabase:get_daily_usage");
   assert.equal(resources.usage.fetchedAt, null);

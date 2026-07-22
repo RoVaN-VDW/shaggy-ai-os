@@ -44,6 +44,18 @@ test("premium visualization CSS preserves interaction and reduced-motion boundar
   assert.doesNotMatch(css, /\.dream-health-bar\s*>\s*i\s*>\s*b\s*\{[^}]*linear-gradient\([^}]*--dream-critical[^}]*--dream-success/s);
   assert.match(css, /\.dream-health-bar\[data-tone="healthy"\]/);
   assert.match(css, /\.dream-knowledge-node__label/);
+  assert.match(
+    css,
+    /\.dream-viewport__canvas\[data-layout="wide"\] \.dream-activity \.dream-activity-trace__item\s*\{\s*min-height:\s*25px;\s*\}/,
+  );
+  assert.match(
+    css,
+    /\.dream-viewport__canvas\[data-layout="wide"\] \.dream-activity-trace__item b,\s*\.dream-viewport__canvas\[data-layout="wide"\] \.dream-activity-trace__item small\s*\{\s*line-height:\s*12px;\s*\}/,
+  );
+  assert.match(
+    css,
+    /\.dream-viewport__canvas\[data-layout="wide"\] \.dream-activity-trace__item small\s*\{\s*margin-top:\s*0;\s*\}/,
+  );
 });
 
 test("low-data knowledge and cognitive dock remain truthful and useful", async () => {

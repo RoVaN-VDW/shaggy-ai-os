@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { useAuthBoundary } from "@/components/auth-boundary-context";
 import { canAccessCockpitData } from "@/lib/auth/auth-boundary";
+import { fetchLocalActivity } from "@/lib/api/local-activity";
 import { fetchLocalProviders } from "@/lib/api/local-providers";
 import {
   createInitialResourceStates,
@@ -202,11 +203,7 @@ export function useCockpitData(): CockpitState {
           .select("id, project_id, name, file_type, size_bytes, embedding_status, storage_path, created_at")
           .order("created_at", { ascending: false })
           .limit(10),
-        supabase
-          .from("agent_activity")
-          .select("id, agent, action, status, metadata, created_at")
-          .order("created_at", { ascending: false })
-          .limit(10),
+        fetchLocalActivity(),
       ]);
 
       const resourceErrors: Record<CockpitResourceKey, string | null> = {
@@ -230,6 +227,7 @@ export function useCockpitData(): CockpitState {
         error: errors.length > 0 ? errors.join("; ") : null,
         resources: resolveCockpitResourceStates(s.resources, resourceErrors, fetchedAt, {
           ...(providersRes.observedAt === null ? {} : { providers: providersRes.observedAt }),
+          ...(activityRes.observedAt === null ? {} : { agentActivity: activityRes.observedAt }),
         }),
         projects: resolveResourceData(s.projects, projectsRes.data as Project[] | null, resourceErrors.projects),
         providers: resolveResourceData(s.providers, providersRes.data as ModelProvider[] | null, resourceErrors.providers),
